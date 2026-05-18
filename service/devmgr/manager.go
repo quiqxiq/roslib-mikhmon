@@ -90,6 +90,19 @@ func (m *Manager) Get(slug string) (*ClientSet, error) {
 	return cs, nil
 }
 
+// RegisterForTest mendaftarkan ClientSet untuk slug langsung tanpa melalui
+// connect(). Hanya dipakai oleh testutil untuk wiring mock device tanpa
+// touch router fisik. Tidak ada validasi — caller bertanggung jawab atas
+// state ClientSet.
+func (m *Manager) RegisterForTest(slug string, cs *ClientSet) {
+	m.mu.Lock()
+	if m.active == nil {
+		m.active = make(map[string]*ClientSet)
+	}
+	m.active[slug] = cs
+	m.mu.Unlock()
+}
+
 // ListActive mengembalikan snapshot slug→ClientSet untuk semua device yang sedang terhubung.
 func (m *Manager) ListActive() map[string]*ClientSet {
 	m.mu.RLock()
