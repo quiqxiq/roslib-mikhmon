@@ -184,12 +184,15 @@ func (c *Client) ScriptRemove(ctx context.Context, id string) error {
 
 func sentenceToScript(s *roslib.Sentence) domain.Script {
 	return domain.Script{
-		ID:      s.Get(".id"),
-		Name:    s.Get("name"),
-		Owner:   s.Get("owner"),
-		Source:  s.Get("source"),
-		Comment: s.Get("comment"),
-		Policy:  s.Get("policy"),
+		ID:                     s.Get(".id"),
+		Name:                   s.Get("name"),
+		Owner:                  s.Get("owner"),
+		Source:                 s.Get("source"),
+		Comment:                s.Get("comment"),
+		Policy:                 s.Get("policy"),
+		RunCount:               int(s.IntOr("run-count", 0)),
+		LastStarted:            s.Get("last-started"),
+		DontRequirePermissions: s.BoolOr("dont-require-permissions", false),
 	}
 }
 

@@ -31,9 +31,11 @@ func sentencesToPools(rows []*roslib.Sentence) []domain.IPPool {
 	out := make([]domain.IPPool, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, domain.IPPool{
-			ID:     s.Get(".id"),
-			Name:   s.Get("name"),
-			Ranges: s.Get("ranges"),
+			ID:       s.Get(".id"),
+			Name:     s.Get("name"),
+			Ranges:   s.Get("ranges"),
+			NextPool: s.Get("next-pool"),
+			Comment:  s.Get("comment"),
 		})
 	}
 	return out

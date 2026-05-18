@@ -80,15 +80,21 @@ func (c *Client) ActiveRemove(ctx context.Context, id string) error {
 
 func sentenceToActive(s *roslib.Sentence) domain.HotspotActive {
 	return domain.HotspotActive{
-		ID:         s.Get(".id"),
-		User:       s.Get("user"),
-		Address:    s.Get("address"),
-		MACAddress: s.Get("mac-address"),
-		Server:     s.Get("server"),
-		LoginBy:    s.Get("login-by"),
-		Uptime:     s.Get("uptime"),
-		BytesIn:    s.IntOr("bytes-in", 0),
-		BytesOut:   s.IntOr("bytes-out", 0),
+		ID:               s.Get(".id"),
+		User:             s.Get("user"),
+		Address:          s.Get("address"),
+		MACAddress:       s.Get("mac-address"),
+		Server:           s.Get("server"),
+		LoginBy:          s.Get("login-by"),
+		Uptime:           s.Get("uptime"),
+		BytesIn:          s.IntOr("bytes-in", 0),
+		BytesOut:         s.IntOr("bytes-out", 0),
+		PacketsIn:        s.IntOr("packets-in", 0),
+		PacketsOut:       s.IntOr("packets-out", 0),
+		IdleTime:         s.Get("idle-time"),
+		SessionTimeLeft:  s.Get("session-time-left"),
+		KeepaliveTimeout: s.Get("keepalive-timeout"),
+		Comment:          s.Get("comment"),
 	}
 }
 

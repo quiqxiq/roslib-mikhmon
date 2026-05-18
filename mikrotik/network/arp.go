@@ -25,6 +25,9 @@ func (c *Client) ARPByMAC(ctx context.Context, mac string) ([]domain.ARPEntry, e
 			Interface:  s.Get("interface"),
 			Dynamic:    s.BoolOr("dynamic", false),
 			Disabled:   s.BoolOr("disabled", false),
+			Complete:   s.BoolOr("complete", false),
+			Published:  s.BoolOr("published", false),
+			Invalid:    s.BoolOr("invalid", false),
 			Comment:    s.Get("comment"),
 		})
 	}

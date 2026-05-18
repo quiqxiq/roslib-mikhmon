@@ -50,11 +50,19 @@ func FromModelTransactions(ts []model.Transaction) []TransactionResponse {
 
 // ReportSummary adalah agregat sederhana untuk dashboard.
 type ReportSummary struct {
-	Count          int                  `json:"count"`
-	TotalPrice     int                  `json:"total_price"`
-	TotalSellPrice int                  `json:"total_sell_price"`
-	Profit         int                  `json:"profit"` // TotalSellPrice - TotalPrice
-	ByProfile      map[string]int       `json:"by_profile,omitempty"`
-	BySellPrice    map[string]int       `json:"by_sell_price,omitempty"`
+	Count          int                   `json:"count"`
+	TotalPrice     int                   `json:"total_price"`
+	TotalSellPrice int                   `json:"total_sell_price"`
+	Profit         int                   `json:"profit"` // TotalSellPrice - TotalPrice
+	ByProfile      map[string]int        `json:"by_profile,omitempty"`
+	BySellPrice    map[string]int        `json:"by_sell_price,omitempty"`
 	Transactions   []TransactionResponse `json:"transactions,omitempty"`
+}
+
+// ReportTodayResponse adalah response untuk endpoint GET /reports/selling/today.
+// Berisi list transaksi pada hari ini beserta metadata count & date string.
+type ReportTodayResponse struct {
+	Date         string                `json:"date"` // "jan/02/2006"
+	Count        int                   `json:"count"`
+	Transactions []TransactionResponse `json:"transactions"`
 }

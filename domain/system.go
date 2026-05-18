@@ -9,21 +9,30 @@ type SystemIdentity struct {
 
 // SystemResource = /system/resource/print.
 type SystemResource struct {
-	Uptime         string
-	Version        string
-	BoardName      string
-	CPULoad        int
-	FreeMemory     int64
-	TotalMemory    int64
-	FreeHDDSpace   int64
-	TotalHDDSpace  int64
-	ArchitectureName string
+	Uptime               string
+	Version              string
+	BuildTime            string
+	FactorySoftware      string
+	BoardName            string
+	Platform             string
+	CPU                  string
+	CPUCount             int
+	CPUFrequency         int64
+	CPULoad              int
+	FreeMemory           int64
+	TotalMemory          int64
+	FreeHDDSpace         int64
+	TotalHDDSpace        int64
+	ArchitectureName     string
+	WriteSectSinceReboot int64
+	BadBlocks            string
 }
 
 // SystemRouterboard = /system/routerboard/print.
 type SystemRouterboard struct {
 	Routerboard     bool
 	Model           string
+	BoardName       string
 	SerialNumber    string
 	FirmwareType    string
 	FactoryFirmware string
@@ -33,11 +42,12 @@ type SystemRouterboard struct {
 
 // SystemClock = /system/clock/print.
 type SystemClock struct {
-	Time         string
-	Date         string
-	TimeZoneName string
-	GMTOffset    string
-	DSTActive    bool
+	Time                string
+	Date                string
+	TimeZoneName        string
+	GMTOffset           string
+	TimeZoneAutodetect  bool
+	DSTActive           bool
 }
 
 // LogEntry = row /log/print.
@@ -58,6 +68,7 @@ type Scheduler struct {
 	Interval  string
 	OnEvent   string
 	NextRun   string
+	Policy    string
 	Disabled  bool
 	Comment   string
 	RunCount  int
@@ -68,10 +79,13 @@ type Scheduler struct {
 // Mikhmon menyimpan 2 jenis: transaksi (comment="mikhmon") dan
 // QuickPrint config (comment="QuickPrintMikhmon").
 type Script struct {
-	ID      string
-	Name    string
-	Owner   string
-	Source  string
-	Comment string
-	Policy  string
+	ID                     string
+	Name                   string
+	Owner                  string
+	Source                 string
+	Comment                string
+	Policy                 string
+	RunCount               int
+	LastStarted            string
+	DontRequirePermissions bool
 }

@@ -34,14 +34,21 @@ func sentencesToHosts(rows []*roslib.Sentence) []domain.HotspotHost {
 	out := make([]domain.HotspotHost, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, domain.HotspotHost{
-			ID:         s.Get(".id"),
-			MACAddress: s.Get("mac-address"),
-			Address:    s.Get("address"),
-			ToAddress:  s.Get("to-address"),
-			Server:     s.Get("server"),
-			Authorized: s.BoolOr("authorized", false),
-			Bypassed:   s.BoolOr("bypassed", false),
-			Comment:    s.Get("comment"),
+			ID:               s.Get(".id"),
+			MACAddress:       s.Get("mac-address"),
+			Address:          s.Get("address"),
+			ToAddress:        s.Get("to-address"),
+			Server:           s.Get("server"),
+			Authorized:       s.BoolOr("authorized", false),
+			Bypassed:         s.BoolOr("bypassed", false),
+			Dynamic:          s.BoolOr("dynamic", false),
+			DHCP:             s.BoolOr("DHCP", false),
+			Uptime:           s.Get("uptime"),
+			IdleTime:         s.Get("idle-time"),
+			KeepaliveTimeout: s.Get("keepalive-timeout"),
+			BytesIn:          s.IntOr("bytes-in", 0),
+			BytesOut:         s.IntOr("bytes-out", 0),
+			Comment:          s.Get("comment"),
 		})
 	}
 	return out

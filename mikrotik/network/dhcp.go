@@ -53,15 +53,18 @@ func sentencesToLeases(rows []*roslib.Sentence) []domain.DHCPLease {
 	out := make([]domain.DHCPLease, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, domain.DHCPLease{
-			ID:         s.Get(".id"),
-			Address:    s.Get("address"),
-			MACAddress: s.Get("mac-address"),
-			HostName:   s.Get("host-name"),
-			Server:     s.Get("server"),
-			Status:     s.Get("status"),
-			Dynamic:    s.BoolOr("dynamic", false),
-			Disabled:   s.BoolOr("disabled", false),
-			Comment:    s.Get("comment"),
+			ID:           s.Get(".id"),
+			Address:      s.Get("address"),
+			MACAddress:   s.Get("mac-address"),
+			ClientID:     s.Get("client-id"),
+			HostName:     s.Get("host-name"),
+			Server:       s.Get("server"),
+			Status:       s.Get("status"),
+			ExpiresAfter: s.Get("expires-after"),
+			LastSeen:     s.Get("last-seen"),
+			Dynamic:      s.BoolOr("dynamic", false),
+			Disabled:     s.BoolOr("disabled", false),
+			Comment:      s.Get("comment"),
 		})
 	}
 	return out

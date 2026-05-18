@@ -56,15 +56,23 @@ func sentencesToQueues(rows []*roslib.Sentence) []domain.QueueSimple {
 	out := make([]domain.QueueSimple, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, domain.QueueSimple{
-			ID:         s.Get(".id"),
-			Name:       s.Get("name"),
-			Target:     s.Get("target"),
-			MaxLimit:   s.Get("max-limit"),
-			BurstLimit: s.Get("burst-limit"),
-			Parent:     s.Get("parent"),
-			Disabled:   s.BoolOr("disabled", false),
-			Dynamic:    s.BoolOr("dynamic", false),
-			Comment:    s.Get("comment"),
+			ID:          s.Get(".id"),
+			Name:        s.Get("name"),
+			Target:      s.Get("target"),
+			MaxLimit:    s.Get("max-limit"),
+			LimitAt:     s.Get("limit-at"),
+			BurstLimit:  s.Get("burst-limit"),
+			Parent:      s.Get("parent"),
+			Priority:    s.Get("priority"),
+			BucketSize:  s.Get("bucket-size"),
+			PacketMarks: s.Get("packet-marks"),
+			Queue:       s.Get("queue"),
+			Disabled:    s.BoolOr("disabled", false),
+			Dynamic:     s.BoolOr("dynamic", false),
+			Comment:     s.Get("comment"),
+			Bytes:       s.Get("bytes"),
+			Packets:     s.Get("packets"),
+			Rate:        s.Get("rate"),
 		})
 	}
 	return out

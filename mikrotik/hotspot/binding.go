@@ -88,6 +88,7 @@ func sentenceToBinding(s *roslib.Sentence) domain.HotspotBinding {
 		Server:     s.Get("server"),
 		Type:       s.Get("type"),
 		Disabled:   s.BoolOr("disabled", false),
+		Bypassed:   s.BoolOr("bypassed", false),
 		Comment:    s.Get("comment"),
 	}
 }

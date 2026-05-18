@@ -170,7 +170,14 @@ func sentenceToProfile(s *roslib.Sentence) domain.HotspotProfile {
 		SharedUsers:       int(s.IntOr("shared-users", 1)),
 		StatusAutorefresh: s.Get("status-autorefresh"),
 		OnLogin:           s.Get("on-login"),
+		OnLogout:          s.Get("on-logout"),
 		ParentQueue:       s.Get("parent-queue"),
+		IdleTimeout:       s.Get("idle-timeout"),
+		KeepaliveTimeout:  s.Get("keepalive-timeout"),
+		SessionTimeout:    s.Get("session-timeout"),
+		MACCookieTimeout:  s.Get("mac-cookie-timeout"),
+		AddMACCookie:      s.BoolOr("add-mac-cookie", false),
+		TransparentProxy:  s.BoolOr("transparent-proxy", false),
 	}
 }
 

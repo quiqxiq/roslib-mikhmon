@@ -11,7 +11,14 @@ type HotspotProfile struct {
 	SharedUsers       int    // default 1 di RouterOS kalau kosong
 	StatusAutorefresh string // mis. "1m"
 	OnLogin           string // RouterOS script — di-generate oleh paket scripts/onlogin
+	OnLogout          string
 	ParentQueue       string
+	IdleTimeout       string // time interval
+	KeepaliveTimeout  string
+	SessionTimeout    string
+	MACCookieTimeout  string // mac-cookie-timeout
+	AddMACCookie      bool
+	TransparentProxy  bool
 }
 
 // VoucherSpec mendeskripsikan parameter generate voucher batch.

@@ -15,12 +15,19 @@ func (c *Client) InterfaceList(ctx context.Context) ([]domain.Interface, error) 
 	out := make([]domain.Interface, 0, len(reply.Rows))
 	for _, s := range reply.Rows {
 		out = append(out, domain.Interface{
-			ID:       s.Get(".id"),
-			Name:     s.Get("name"),
-			Type:     s.Get("type"),
-			Running:  s.BoolOr("running", false),
-			Disabled: s.BoolOr("disabled", false),
-			Comment:  s.Get("comment"),
+			ID:               s.Get(".id"),
+			Name:             s.Get("name"),
+			DefaultName:      s.Get("default-name"),
+			Type:             s.Get("type"),
+			MTU:              s.Get("mtu"),
+			ActualMTU:        s.IntOr("actual-mtu", 0),
+			MACAddress:       s.Get("mac-address"),
+			LastLinkUpTime:   s.Get("last-link-up-time"),
+			LastLinkDownTime: s.Get("last-link-down-time"),
+			LinkDowns:        s.IntOr("link-downs", 0),
+			Running:          s.BoolOr("running", false),
+			Disabled:         s.BoolOr("disabled", false),
+			Comment:          s.Get("comment"),
 		})
 	}
 	return out, nil

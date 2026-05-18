@@ -45,6 +45,10 @@ func NewServer(deps *Deps) http.Handler {
 	// Health probe — di-extend dengan dependency check di healthz.go.
 	r.GET("/healthz", healthzHandler(deps))
 
+	// Interactive API docs (Rapidoc UI + OpenAPI spec).
+	// Path: /docs → UI, /docs/openapi.yaml → raw spec.
+	RegisterDocs(r)
+
 	v1 := r.Group("/api/v1")
 	RegisterRoutes(v1, deps)
 

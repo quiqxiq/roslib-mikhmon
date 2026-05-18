@@ -23,6 +23,15 @@ type DeviceResponse struct {
 	CreatedAt           time.Time  `json:"created_at"`
 }
 
+// DeviceWriteResponse adalah response untuk create/update device.
+// Field Warning di-set kalau record berhasil tersimpan namun koneksi
+// devmgr gagal (mis. credential salah, host unreachable). Front-end
+// bisa menampilkan warning ini tanpa kehilangan device record.
+type DeviceWriteResponse struct {
+	Device  DeviceResponse `json:"device"`
+	Warning string         `json:"warning,omitempty"`
+}
+
 func FromModelDevice(d model.MikrotikDevice) DeviceResponse {
 	return DeviceResponse{
 		ID:                  d.ID,

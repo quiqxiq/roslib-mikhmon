@@ -117,12 +117,23 @@ func (c *Client) ProfileRemove(ctx context.Context, id string) error {
 
 func sentenceToProfile(s *roslib.Sentence) domain.PPPProfile {
 	return domain.PPPProfile{
-		ID:         s.Get(".id"),
-		Name:       s.Get("name"),
-		LocalAddr:  s.Get("local-address"),
-		RemoteAddr: s.Get("remote-address"),
-		RateLimit:  s.Get("rate-limit"),
-		Comment:    s.Get("comment"),
+		ID:             s.Get(".id"),
+		Name:           s.Get("name"),
+		LocalAddr:      s.Get("local-address"),
+		RemoteAddr:     s.Get("remote-address"),
+		RateLimit:      s.Get("rate-limit"),
+		DNSServer:      s.Get("dns-server"),
+		Bridge:         s.Get("bridge"),
+		ParentQueue:    s.Get("parent-queue"),
+		IdleTimeout:    s.Get("idle-timeout"),
+		SessionTimeout: s.Get("session-timeout"),
+		OnUp:           s.Get("on-up"),
+		OnDown:         s.Get("on-down"),
+		OnlyOne:        s.Get("only-one"),
+		UseCompression: s.Get("use-compression"),
+		UseEncryption:  s.Get("use-encryption"),
+		ChangeTCPMSS:   s.Get("change-tcp-mss"),
+		Comment:        s.Get("comment"),
 	}
 }
 

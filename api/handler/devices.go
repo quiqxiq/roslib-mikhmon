@@ -72,9 +72,9 @@ func (h *Devices) Create(c *gin.Context) {
 	// Terhubung ke device setelah dibuat
 	if err := h.DevMgr.Add(c.Request.Context(), d); err != nil {
 		// Koneksi gagal tapi record sudah tersimpan — kembalikan data + warning
-		c.JSON(http.StatusCreated, dto.OK(gin.H{
-			"device":  dto.FromModelDevice(d),
-			"warning": "device saved but connection failed: " + err.Error(),
+		c.JSON(http.StatusCreated, dto.OK(dto.DeviceWriteResponse{
+			Device:  dto.FromModelDevice(d),
+			Warning: "device saved but connection failed: " + err.Error(),
 		}))
 		return
 	}
@@ -109,9 +109,9 @@ func (h *Devices) Update(c *gin.Context) {
 	h.DevMgr.RemoveAndWait(existing.Slug)
 	if err := h.DevMgr.Add(context.Background(), existing); err != nil {
 		// Reconnect gagal — record tetap tersimpan, kasih warning ke caller.
-		c.JSON(http.StatusOK, dto.OK(gin.H{
-			"device":  dto.FromModelDevice(existing),
-			"warning": "device updated but reconnect failed: " + err.Error(),
+		c.JSON(http.StatusOK, dto.OK(dto.DeviceWriteResponse{
+			Device:  dto.FromModelDevice(existing),
+			Warning: "device updated but reconnect failed: " + err.Error(),
 		}))
 		return
 	}

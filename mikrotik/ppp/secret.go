@@ -158,16 +158,23 @@ func (c *Client) SecretRemove(ctx context.Context, id string) error {
 
 func sentenceToSecret(s *roslib.Sentence) domain.PPPSecret {
 	return domain.PPPSecret{
-		ID:         s.Get(".id"),
-		Name:       s.Get("name"),
-		Password:   s.Get("password"),
-		Service:    s.Get("service"),
-		Profile:    s.Get("profile"),
-		LocalAddr:  s.Get("local-address"),
-		RemoteAddr: s.Get("remote-address"),
-		CallerID:   s.Get("caller-id"),
-		Disabled:   s.BoolOr("disabled", false),
-		Comment:    s.Get("comment"),
+		ID:               s.Get(".id"),
+		Name:             s.Get("name"),
+		Password:         s.Get("password"),
+		Service:          s.Get("service"),
+		Profile:          s.Get("profile"),
+		LocalAddr:        s.Get("local-address"),
+		RemoteAddr:       s.Get("remote-address"),
+		CallerID:         s.Get("caller-id"),
+		Routes:           s.Get("routes"),
+		IPv6Routes:       s.Get("ipv6-routes"),
+		RemoteIPv6Prefix: s.Get("remote-ipv6-prefix"),
+		LimitBytesIn:     s.IntOr("limit-bytes-in", 0),
+		LimitBytesOut:    s.IntOr("limit-bytes-out", 0),
+		LastLoggedOut:    s.Get("last-logged-out"),
+		LastCallerID:     s.Get("last-caller-id"),
+		Disabled:         s.BoolOr("disabled", false),
+		Comment:          s.Get("comment"),
 	}
 }
 

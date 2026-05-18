@@ -14,6 +14,9 @@ type HotspotUser struct {
 	Disabled        bool
 	Comment         string // sering dipakai mikhmon untuk simpan expiry date
 	MACAddress      string
+	Address         string // IP address fixed (RouterOS field "address")
+	Email           string // RouterOS field "email"
+	Routes          string // RouterOS field "routes"
 	LimitUptime     string // format RouterOS: "1h", "1d", dll
 	LimitBytesTotal int64  // 0 = unlimited
 	LimitBytesIn    int64  // limit-bytes-in per-direction (0 = unlimited)
@@ -27,36 +30,49 @@ type HotspotUser struct {
 
 // HotspotActive adalah row /ip/hotspot/active/print.
 type HotspotActive struct {
-	ID         string
-	User       string
-	Address    string
-	MACAddress string
-	Server     string
-	LoginBy    string
-	Uptime     string
-	BytesIn    int64
-	BytesOut   int64
+	ID                string
+	User              string
+	Address           string
+	MACAddress        string
+	Server            string
+	LoginBy           string
+	Uptime            string
+	BytesIn           int64
+	BytesOut          int64
+	PacketsIn         int64
+	PacketsOut        int64
+	IdleTime          string // RouterOS field "idle-time"
+	SessionTimeLeft   string // RouterOS field "session-time-left" (mikhmon hotspotactive.php)
+	KeepaliveTimeout  string // RouterOS field "keepalive-timeout"
+	Comment           string // mikhmon hotspotactive.php menampilkan ini
 }
 
 // HotspotHost adalah row /ip/hotspot/host/print.
 type HotspotHost struct {
-	ID         string
-	MACAddress string
-	Address    string
-	ToAddress  string
-	Server     string
-	Authorized bool
-	Bypassed   bool
-	Comment    string
+	ID               string
+	MACAddress       string
+	Address          string
+	ToAddress        string
+	Server           string
+	Authorized       bool
+	Bypassed         bool
+	Dynamic          bool   // RouterOS print field; mikhmon hosts.php pakai
+	DHCP             bool   // RouterOS print field; mikhmon hosts.php pakai
+	Uptime           string // host uptime
+	IdleTime         string
+	KeepaliveTimeout string
+	BytesIn          int64
+	BytesOut         int64
+	Comment          string
 }
 
 // HotspotCookie adalah row /ip/hotspot/cookie/print.
 type HotspotCookie struct {
-	ID       string
-	User     string
-	Domain   string
-	Expires  string
-	MACEndor string
+	ID         string
+	User       string
+	Domain     string
+	MACAddress string // RouterOS field "mac-address" (mikhmon cookies.php)
+	ExpiresIn  string // RouterOS field "expires-in" (rename dari Expires supaya match RouterOS+mikhmon)
 }
 
 // HotspotBinding adalah row /ip/hotspot/ip-binding/print.
@@ -70,5 +86,6 @@ type HotspotBinding struct {
 	Server     string
 	Type       string // "regular", "bypassed", "blocked"
 	Disabled   bool
+	Bypassed   bool   // mikhmon ipbinding.php baca field ini
 	Comment    string
 }

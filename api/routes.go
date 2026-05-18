@@ -60,3 +60,13 @@ func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
 		handler.NewReport(deps.DeviceStore, deps.TxStore).Register(reportScope)
 	}
 }
+
+// RegisterDocs mounts OpenAPI spec + interactive docs UI (Scalar).
+// Register sebagai group di root router (bukan di /api/v1).
+func RegisterDocs(r *gin.Engine) {
+	// Serve seluruh direktori openapi/ agar Scalar bisa resolve
+	// relative $ref (schemas/*.yaml, paths/*.yaml).
+	r.Static("/docs/openapi", "docs/openapi")
+	// Serve Scalar UI
+	r.StaticFile("/docs", "docs/scalar/index.html")
+}

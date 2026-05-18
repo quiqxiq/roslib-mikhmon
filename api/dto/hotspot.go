@@ -17,6 +17,9 @@ type HotspotUserResponse struct {
 	Disabled        bool   `json:"disabled"`
 	Comment         string `json:"comment,omitempty"`
 	MACAddress      string `json:"mac_address,omitempty"`
+	Address         string `json:"address,omitempty"`
+	Email           string `json:"email,omitempty"`
+	Routes          string `json:"routes,omitempty"`
 	LimitUptime     string `json:"limit_uptime,omitempty"`
 	LimitBytesTotal int64  `json:"limit_bytes_total"`
 	LimitBytesIn    int64  `json:"limit_bytes_in"`
@@ -36,6 +39,9 @@ func FromDomainUser(u domain.HotspotUser) HotspotUserResponse {
 		Disabled:        u.Disabled,
 		Comment:         u.Comment,
 		MACAddress:      u.MACAddress,
+		Address:         u.Address,
+		Email:           u.Email,
+		Routes:          u.Routes,
 		LimitUptime:     u.LimitUptime,
 		LimitBytesTotal: u.LimitBytesTotal,
 		LimitBytesIn:    u.LimitBytesIn,
@@ -150,7 +156,14 @@ type HotspotProfileResponse struct {
 	SharedUsers       int    `json:"shared_users"`
 	StatusAutorefresh string `json:"status_autorefresh,omitempty"`
 	OnLogin           string `json:"on_login,omitempty"`
+	OnLogout          string `json:"on_logout,omitempty"`
 	ParentQueue       string `json:"parent_queue,omitempty"`
+	IdleTimeout       string `json:"idle_timeout,omitempty"`
+	KeepaliveTimeout  string `json:"keepalive_timeout,omitempty"`
+	SessionTimeout    string `json:"session_timeout,omitempty"`
+	MACCookieTimeout  string `json:"mac_cookie_timeout,omitempty"`
+	AddMACCookie      bool   `json:"add_mac_cookie"`
+	TransparentProxy  bool   `json:"transparent_proxy"`
 }
 
 func FromDomainProfile(p domain.HotspotProfile) HotspotProfileResponse {
@@ -162,7 +175,14 @@ func FromDomainProfile(p domain.HotspotProfile) HotspotProfileResponse {
 		SharedUsers:       p.SharedUsers,
 		StatusAutorefresh: p.StatusAutorefresh,
 		OnLogin:           p.OnLogin,
+		OnLogout:          p.OnLogout,
 		ParentQueue:       p.ParentQueue,
+		IdleTimeout:       p.IdleTimeout,
+		KeepaliveTimeout:  p.KeepaliveTimeout,
+		SessionTimeout:    p.SessionTimeout,
+		MACCookieTimeout:  p.MACCookieTimeout,
+		AddMACCookie:      p.AddMACCookie,
+		TransparentProxy:  p.TransparentProxy,
 	}
 }
 
@@ -227,15 +247,21 @@ type HotspotProfileDeleteRequest struct {
 // ── HotspotActive ────────────────────────────────────────────────────
 
 type HotspotActiveResponse struct {
-	ID         string `json:"id"`
-	User       string `json:"user"`
-	Address    string `json:"address,omitempty"`
-	MACAddress string `json:"mac_address,omitempty"`
-	Server     string `json:"server,omitempty"`
-	LoginBy    string `json:"login_by,omitempty"`
-	Uptime     string `json:"uptime,omitempty"`
-	BytesIn    int64  `json:"bytes_in"`
-	BytesOut   int64  `json:"bytes_out"`
+	ID               string `json:"id"`
+	User             string `json:"user"`
+	Address          string `json:"address,omitempty"`
+	MACAddress       string `json:"mac_address,omitempty"`
+	Server           string `json:"server,omitempty"`
+	LoginBy          string `json:"login_by,omitempty"`
+	Uptime           string `json:"uptime,omitempty"`
+	BytesIn          int64  `json:"bytes_in"`
+	BytesOut         int64  `json:"bytes_out"`
+	PacketsIn        int64  `json:"packets_in"`
+	PacketsOut       int64  `json:"packets_out"`
+	IdleTime         string `json:"idle_time,omitempty"`
+	SessionTimeLeft  string `json:"session_time_left,omitempty"`
+	KeepaliveTimeout string `json:"keepalive_timeout,omitempty"`
+	Comment          string `json:"comment,omitempty"`
 }
 
 func FromDomainActive(a domain.HotspotActive) HotspotActiveResponse {
@@ -243,6 +269,9 @@ func FromDomainActive(a domain.HotspotActive) HotspotActiveResponse {
 		ID: a.ID, User: a.User, Address: a.Address, MACAddress: a.MACAddress,
 		Server: a.Server, LoginBy: a.LoginBy, Uptime: a.Uptime,
 		BytesIn: a.BytesIn, BytesOut: a.BytesOut,
+		PacketsIn: a.PacketsIn, PacketsOut: a.PacketsOut,
+		IdleTime: a.IdleTime, SessionTimeLeft: a.SessionTimeLeft,
+		KeepaliveTimeout: a.KeepaliveTimeout, Comment: a.Comment,
 	}
 }
 
@@ -264,13 +293,15 @@ type HotspotBindingResponse struct {
 	Server     string `json:"server,omitempty"`
 	Type       string `json:"type,omitempty"`
 	Disabled   bool   `json:"disabled"`
+	Bypassed   bool   `json:"bypassed"`
 	Comment    string `json:"comment,omitempty"`
 }
 
 func FromDomainBinding(b domain.HotspotBinding) HotspotBindingResponse {
 	return HotspotBindingResponse{
 		ID: b.ID, MACAddress: b.MACAddress, Address: b.Address, ToAddress: b.ToAddress,
-		Server: b.Server, Type: b.Type, Disabled: b.Disabled, Comment: b.Comment,
+		Server: b.Server, Type: b.Type, Disabled: b.Disabled, Bypassed: b.Bypassed,
+		Comment: b.Comment,
 	}
 }
 
@@ -290,20 +321,30 @@ type SetBindingTypeRequest struct {
 // ── HotspotHost ──────────────────────────────────────────────────────
 
 type HotspotHostResponse struct {
-	ID         string `json:"id"`
-	MACAddress string `json:"mac_address,omitempty"`
-	Address    string `json:"address,omitempty"`
-	ToAddress  string `json:"to_address,omitempty"`
-	Server     string `json:"server,omitempty"`
-	Authorized bool   `json:"authorized"`
-	Bypassed   bool   `json:"bypassed"`
-	Comment    string `json:"comment,omitempty"`
+	ID               string `json:"id"`
+	MACAddress       string `json:"mac_address,omitempty"`
+	Address          string `json:"address,omitempty"`
+	ToAddress        string `json:"to_address,omitempty"`
+	Server           string `json:"server,omitempty"`
+	Authorized       bool   `json:"authorized"`
+	Bypassed         bool   `json:"bypassed"`
+	Dynamic          bool   `json:"dynamic"`
+	DHCP             bool   `json:"dhcp"`
+	Uptime           string `json:"uptime,omitempty"`
+	IdleTime         string `json:"idle_time,omitempty"`
+	KeepaliveTimeout string `json:"keepalive_timeout,omitempty"`
+	BytesIn          int64  `json:"bytes_in"`
+	BytesOut         int64  `json:"bytes_out"`
+	Comment          string `json:"comment,omitempty"`
 }
 
 func FromDomainHost(h domain.HotspotHost) HotspotHostResponse {
 	return HotspotHostResponse{
 		ID: h.ID, MACAddress: h.MACAddress, Address: h.Address, ToAddress: h.ToAddress,
-		Server: h.Server, Authorized: h.Authorized, Bypassed: h.Bypassed, Comment: h.Comment,
+		Server: h.Server, Authorized: h.Authorized, Bypassed: h.Bypassed,
+		Dynamic: h.Dynamic, DHCP: h.DHCP, Uptime: h.Uptime, IdleTime: h.IdleTime,
+		KeepaliveTimeout: h.KeepaliveTimeout, BytesIn: h.BytesIn, BytesOut: h.BytesOut,
+		Comment: h.Comment,
 	}
 }
 
@@ -318,15 +359,17 @@ func FromDomainHosts(hs []domain.HotspotHost) []HotspotHostResponse {
 // ── HotspotCookie ────────────────────────────────────────────────────
 
 type HotspotCookieResponse struct {
-	ID      string `json:"id"`
-	User    string `json:"user,omitempty"`
-	Domain  string `json:"domain,omitempty"`
-	Expires string `json:"expires,omitempty"`
+	ID         string `json:"id"`
+	User       string `json:"user,omitempty"`
+	Domain     string `json:"domain,omitempty"`
+	MACAddress string `json:"mac_address,omitempty"`
+	ExpiresIn  string `json:"expires_in,omitempty"`
 }
 
 func FromDomainCookie(c domain.HotspotCookie) HotspotCookieResponse {
 	return HotspotCookieResponse{
-		ID: c.ID, User: c.User, Domain: c.Domain, Expires: c.Expires,
+		ID: c.ID, User: c.User, Domain: c.Domain,
+		MACAddress: c.MACAddress, ExpiresIn: c.ExpiresIn,
 	}
 }
 
@@ -341,14 +384,25 @@ func FromDomainCookies(cs []domain.HotspotCookie) []HotspotCookieResponse {
 // ── HotspotServer ────────────────────────────────────────────────────
 
 type HotspotServerResponse struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Profile  string `json:"profile,omitempty"`
-	Disabled bool   `json:"disabled"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Profile          string `json:"profile,omitempty"`
+	Interface        string `json:"interface,omitempty"`
+	AddressPool      string `json:"address_pool,omitempty"`
+	AddressesPerMAC  string `json:"addresses_per_mac,omitempty"`
+	IdleTimeout      string `json:"idle_timeout,omitempty"`
+	KeepaliveTimeout string `json:"keepalive_timeout,omitempty"`
+	LoginTimeout     string `json:"login_timeout,omitempty"`
+	Disabled         bool   `json:"disabled"`
 }
 
 func FromHotspotServer(s hotspot.HotspotServer) HotspotServerResponse {
-	return HotspotServerResponse{ID: s.ID, Name: s.Name, Profile: s.Profile, Disabled: s.Disabled}
+	return HotspotServerResponse{
+		ID: s.ID, Name: s.Name, Profile: s.Profile, Interface: s.Interface,
+		AddressPool: s.AddressPool, AddressesPerMAC: s.AddressesPerMAC,
+		IdleTimeout: s.IdleTimeout, KeepaliveTimeout: s.KeepaliveTimeout,
+		LoginTimeout: s.LoginTimeout, Disabled: s.Disabled,
+	}
 }
 
 func FromHotspotServers(ss []hotspot.HotspotServer) []HotspotServerResponse {

@@ -4,6 +4,16 @@ REST + SSE service di atas paket `mikrotik/*` dan `workflows/`. Entry point:
 `cmd/server/main.go`. Layer ini di-bind ke `127.0.0.1:8080` secara default
 (local-only — auth ditunda).
 
+## Interactive API Documentation
+
+Server menyediakan UI dokumentasi interaktif (Rapidoc) dengan fitur "Try it out":
+
+- **UI**: `http://127.0.0.1:8080/docs`
+- **OpenAPI Spec**: `http://127.0.0.1:8080/docs/openapi.yaml`
+
+Spec berbasis OpenAPI 3.0 dengan struktur modular (`docs/openapi/`). Untuk update
+endpoint baru, tambah/ubah file di `docs/openapi/schemas/` dan `docs/openapi/paths/`.
+
 ## Response envelope
 
 Semua endpoint pakai bentuk envelope konsisten:

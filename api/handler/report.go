@@ -86,7 +86,11 @@ func (h *Report) SellingToday(c *gin.Context) {
 		return
 	}
 	out := dto.FromModelTransactions(txs)
-	WriteOK(c, gin.H{"date": today, "count": len(out), "transactions": out})
+	WriteOK(c, dto.ReportTodayResponse{
+		Date:         today,
+		Count:        len(out),
+		Transactions: out,
+	})
 }
 
 // SellingSummary: GET /reports/selling/summary?month=jan2025&include_transactions=true

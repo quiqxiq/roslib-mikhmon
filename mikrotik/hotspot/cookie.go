@@ -53,10 +53,11 @@ func sentencesToCookies(rows []*roslib.Sentence) []domain.HotspotCookie {
 	out := make([]domain.HotspotCookie, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, domain.HotspotCookie{
-			ID:      s.Get(".id"),
-			User:    s.Get("user"),
-			Domain:  s.Get("domain"),
-			Expires: s.Get("expires-in"),
+			ID:         s.Get(".id"),
+			User:       s.Get("user"),
+			Domain:     s.Get("domain"),
+			MACAddress: s.Get("mac-address"),
+			ExpiresIn:  s.Get("expires-in"),
 		})
 	}
 	return out

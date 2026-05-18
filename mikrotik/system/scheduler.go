@@ -143,6 +143,7 @@ func sentenceToScheduler(s *roslib.Sentence) domain.Scheduler {
 		Interval:  s.Get("interval"),
 		OnEvent:   s.Get("on-event"),
 		NextRun:   s.Get("next-run"),
+		Policy:    s.Get("policy"),
 		Disabled:  s.BoolOr("disabled", false),
 		Comment:   s.Get("comment"),
 		RunCount:  int(s.IntOr("run-count", 0)),

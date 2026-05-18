@@ -221,16 +221,16 @@ func (h *History) execQuery(c *gin.Context, sql string, p historyParams) {
 	if err != nil {
 		// Tabel belum ada = belum ada data masuk; kembalikan array kosong.
 		if strings.Contains(err.Error(), "not found") {
-			WriteList(c, []any{}, 0)
+			WriteList(c, []dto.HistoryRow{}, 0)
 			return
 		}
 		WriteErr(c, err)
 		return
 	}
 
-	rows := make([]any, 0)
+	rows := make([]dto.HistoryRow, 0)
 	for iter.Next() {
-		rows = append(rows, iter.Value())
+		rows = append(rows, dto.HistoryRow(iter.Value()))
 	}
 	WriteList(c, rows, len(rows))
 }

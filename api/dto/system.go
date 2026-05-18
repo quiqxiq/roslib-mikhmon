@@ -18,23 +18,34 @@ func FromDomainIdentity(i domain.SystemIdentity) SystemIdentityResponse {
 // ── SystemResource ─────────────────────────────────────────────────────
 
 type SystemResourceResponse struct {
-	Uptime           string `json:"uptime,omitempty"`
-	Version          string `json:"version,omitempty"`
-	BoardName        string `json:"board_name,omitempty"`
-	CPULoad          int    `json:"cpu_load"`
-	FreeMemory       int64  `json:"free_memory"`
-	TotalMemory      int64  `json:"total_memory"`
-	FreeHDDSpace     int64  `json:"free_hdd_space"`
-	TotalHDDSpace    int64  `json:"total_hdd_space"`
-	ArchitectureName string `json:"architecture_name,omitempty"`
+	Uptime               string `json:"uptime,omitempty"`
+	Version              string `json:"version,omitempty"`
+	BuildTime            string `json:"build_time,omitempty"`
+	FactorySoftware      string `json:"factory_software,omitempty"`
+	BoardName            string `json:"board_name,omitempty"`
+	Platform             string `json:"platform,omitempty"`
+	CPU                  string `json:"cpu,omitempty"`
+	CPUCount             int    `json:"cpu_count,omitempty"`
+	CPUFrequency         int64  `json:"cpu_frequency,omitempty"`
+	CPULoad              int    `json:"cpu_load"`
+	FreeMemory           int64  `json:"free_memory"`
+	TotalMemory          int64  `json:"total_memory"`
+	FreeHDDSpace         int64  `json:"free_hdd_space"`
+	TotalHDDSpace        int64  `json:"total_hdd_space"`
+	ArchitectureName     string `json:"architecture_name,omitempty"`
+	WriteSectSinceReboot int64  `json:"write_sect_since_reboot,omitempty"`
+	BadBlocks            string `json:"bad_blocks,omitempty"`
 }
 
 func FromDomainResource(r domain.SystemResource) SystemResourceResponse {
 	return SystemResourceResponse{
-		Uptime: r.Uptime, Version: r.Version, BoardName: r.BoardName,
-		CPULoad: r.CPULoad, FreeMemory: r.FreeMemory, TotalMemory: r.TotalMemory,
+		Uptime: r.Uptime, Version: r.Version, BuildTime: r.BuildTime,
+		FactorySoftware: r.FactorySoftware, BoardName: r.BoardName, Platform: r.Platform,
+		CPU: r.CPU, CPUCount: r.CPUCount, CPUFrequency: r.CPUFrequency, CPULoad: r.CPULoad,
+		FreeMemory: r.FreeMemory, TotalMemory: r.TotalMemory,
 		FreeHDDSpace: r.FreeHDDSpace, TotalHDDSpace: r.TotalHDDSpace,
 		ArchitectureName: r.ArchitectureName,
+		WriteSectSinceReboot: r.WriteSectSinceReboot, BadBlocks: r.BadBlocks,
 	}
 }
 
@@ -43,6 +54,7 @@ func FromDomainResource(r domain.SystemResource) SystemResourceResponse {
 type SystemRouterboardResponse struct {
 	Routerboard     bool   `json:"routerboard"`
 	Model           string `json:"model,omitempty"`
+	BoardName       string `json:"board_name,omitempty"`
 	SerialNumber    string `json:"serial_number,omitempty"`
 	FirmwareType    string `json:"firmware_type,omitempty"`
 	FactoryFirmware string `json:"factory_firmware,omitempty"`
@@ -52,7 +64,8 @@ type SystemRouterboardResponse struct {
 
 func FromDomainRouterboard(r domain.SystemRouterboard) SystemRouterboardResponse {
 	return SystemRouterboardResponse{
-		Routerboard: r.Routerboard, Model: r.Model, SerialNumber: r.SerialNumber,
+		Routerboard: r.Routerboard, Model: r.Model, BoardName: r.BoardName,
+		SerialNumber: r.SerialNumber,
 		FirmwareType: r.FirmwareType, FactoryFirmware: r.FactoryFirmware,
 		CurrentFirmware: r.CurrentFirmware, UpgradeFirmware: r.UpgradeFirmware,
 	}
@@ -61,35 +74,42 @@ func FromDomainRouterboard(r domain.SystemRouterboard) SystemRouterboardResponse
 // ── SystemClock ────────────────────────────────────────────────────────
 
 type SystemClockResponse struct {
-	Time         string `json:"time,omitempty"`
-	Date         string `json:"date,omitempty"`
-	TimeZoneName string `json:"time_zone_name,omitempty"`
-	GMTOffset    string `json:"gmt_offset,omitempty"`
-	DSTActive    bool   `json:"dst_active"`
+	Time               string `json:"time,omitempty"`
+	Date               string `json:"date,omitempty"`
+	TimeZoneName       string `json:"time_zone_name,omitempty"`
+	GMTOffset          string `json:"gmt_offset,omitempty"`
+	TimeZoneAutodetect bool   `json:"time_zone_autodetect"`
+	DSTActive          bool   `json:"dst_active"`
 }
 
 func FromDomainClock(c domain.SystemClock) SystemClockResponse {
 	return SystemClockResponse{
 		Time: c.Time, Date: c.Date, TimeZoneName: c.TimeZoneName,
-		GMTOffset: c.GMTOffset, DSTActive: c.DSTActive,
+		GMTOffset: c.GMTOffset, TimeZoneAutodetect: c.TimeZoneAutodetect,
+		DSTActive: c.DSTActive,
 	}
 }
 
 // ── Script ─────────────────────────────────────────────────────────────
 
 type ScriptResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Owner   string `json:"owner,omitempty"`
-	Source  string `json:"source,omitempty"`
-	Comment string `json:"comment,omitempty"`
-	Policy  string `json:"policy,omitempty"`
+	ID                     string `json:"id"`
+	Name                   string `json:"name"`
+	Owner                  string `json:"owner,omitempty"`
+	Source                 string `json:"source,omitempty"`
+	Comment                string `json:"comment,omitempty"`
+	Policy                 string `json:"policy,omitempty"`
+	RunCount               int    `json:"run_count"`
+	LastStarted            string `json:"last_started,omitempty"`
+	DontRequirePermissions bool   `json:"dont_require_permissions"`
 }
 
 func FromDomainScript(s domain.Script) ScriptResponse {
 	return ScriptResponse{
 		ID: s.ID, Name: s.Name, Owner: s.Owner,
 		Source: s.Source, Comment: s.Comment, Policy: s.Policy,
+		RunCount: s.RunCount, LastStarted: s.LastStarted,
+		DontRequirePermissions: s.DontRequirePermissions,
 	}
 }
 
@@ -138,6 +158,7 @@ type SchedulerResponse struct {
 	Interval  string `json:"interval,omitempty"`
 	OnEvent   string `json:"on_event,omitempty"`
 	NextRun   string `json:"next_run,omitempty"`
+	Policy    string `json:"policy,omitempty"`
 	Disabled  bool   `json:"disabled"`
 	Comment   string `json:"comment,omitempty"`
 	RunCount  int    `json:"run_count"`
@@ -146,7 +167,7 @@ type SchedulerResponse struct {
 func FromDomainScheduler(s domain.Scheduler) SchedulerResponse {
 	return SchedulerResponse{
 		ID: s.ID, Name: s.Name, StartDate: s.StartDate, StartTime: s.StartTime,
-		Interval: s.Interval, OnEvent: s.OnEvent, NextRun: s.NextRun,
+		Interval: s.Interval, OnEvent: s.OnEvent, NextRun: s.NextRun, Policy: s.Policy,
 		Disabled: s.Disabled, Comment: s.Comment, RunCount: s.RunCount,
 	}
 }

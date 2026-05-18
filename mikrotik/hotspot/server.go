@@ -11,10 +11,16 @@ const serverPath = "/ip/hotspot"
 
 // HotspotServer adalah row /ip/hotspot/print (daftar nama server hotspot).
 type HotspotServer struct {
-	ID       string
-	Name     string
-	Profile  string
-	Disabled bool
+	ID                string
+	Name              string
+	Profile           string
+	Interface         string
+	AddressPool       string
+	AddressesPerMAC   string // RouterOS field "addresses-per-mac" (numeric atau "unlimited")
+	IdleTimeout       string
+	KeepaliveTimeout  string
+	LoginTimeout      string
+	Disabled          bool
 }
 
 // ServerList → /ip/hotspot/print (analisis §1.8).
@@ -40,10 +46,16 @@ func sentencesToServers(rows []*roslib.Sentence) []HotspotServer {
 	out := make([]HotspotServer, 0, len(rows))
 	for _, s := range rows {
 		out = append(out, HotspotServer{
-			ID:       s.Get(".id"),
-			Name:     s.Get("name"),
-			Profile:  s.Get("profile"),
-			Disabled: s.BoolOr("disabled", false),
+			ID:               s.Get(".id"),
+			Name:             s.Get("name"),
+			Profile:          s.Get("profile"),
+			Interface:        s.Get("interface"),
+			AddressPool:      s.Get("address-pool"),
+			AddressesPerMAC:  s.Get("addresses-per-mac"),
+			IdleTimeout:      s.Get("idle-timeout"),
+			KeepaliveTimeout: s.Get("keepalive-timeout"),
+			LoginTimeout:     s.Get("login-timeout"),
+			Disabled:         s.BoolOr("disabled", false),
 		})
 	}
 	return out

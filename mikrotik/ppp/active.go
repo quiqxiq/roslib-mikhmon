@@ -18,12 +18,17 @@ func (c *Client) ActiveList(ctx context.Context) ([]domain.PPPActive, error) {
 	out := make([]domain.PPPActive, 0, len(reply.Rows))
 	for _, s := range reply.Rows {
 		out = append(out, domain.PPPActive{
-			ID:       s.Get(".id"),
-			Name:     s.Get("name"),
-			Service:  s.Get("service"),
-			CallerID: s.Get("caller-id"),
-			Address:  s.Get("address"),
-			Uptime:   s.Get("uptime"),
+			ID:            s.Get(".id"),
+			Name:          s.Get("name"),
+			Service:       s.Get("service"),
+			CallerID:      s.Get("caller-id"),
+			Address:       s.Get("address"),
+			Uptime:        s.Get("uptime"),
+			Encoding:      s.Get("encoding"),
+			SessionID:     s.Get("session-id"),
+			LimitBytesIn:  s.IntOr("limit-bytes-in", 0),
+			LimitBytesOut: s.IntOr("limit-bytes-out", 0),
+			Comment:       s.Get("comment"),
 		})
 	}
 	return out, nil

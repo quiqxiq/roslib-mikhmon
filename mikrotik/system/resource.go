@@ -18,15 +18,23 @@ func (c *Client) Resource(ctx context.Context) (domain.SystemResource, error) {
 	}
 	s := reply.Rows[0]
 	return domain.SystemResource{
-		Uptime:           s.Get("uptime"),
-		Version:          s.Get("version"),
-		BoardName:        s.Get("board-name"),
-		CPULoad:          int(s.IntOr("cpu-load", 0)),
-		FreeMemory:       s.IntOr("free-memory", 0),
-		TotalMemory:      s.IntOr("total-memory", 0),
-		FreeHDDSpace:     s.IntOr("free-hdd-space", 0),
-		TotalHDDSpace:    s.IntOr("total-hdd-space", 0),
-		ArchitectureName: s.Get("architecture-name"),
+		Uptime:               s.Get("uptime"),
+		Version:              s.Get("version"),
+		BuildTime:            s.Get("build-time"),
+		FactorySoftware:      s.Get("factory-software"),
+		BoardName:            s.Get("board-name"),
+		Platform:             s.Get("platform"),
+		CPU:                  s.Get("cpu"),
+		CPUCount:             int(s.IntOr("cpu-count", 0)),
+		CPUFrequency:         s.IntOr("cpu-frequency", 0),
+		CPULoad:              int(s.IntOr("cpu-load", 0)),
+		FreeMemory:           s.IntOr("free-memory", 0),
+		TotalMemory:          s.IntOr("total-memory", 0),
+		FreeHDDSpace:         s.IntOr("free-hdd-space", 0),
+		TotalHDDSpace:        s.IntOr("total-hdd-space", 0),
+		ArchitectureName:     s.Get("architecture-name"),
+		WriteSectSinceReboot: s.IntOr("write-sect-since-reboot", 0),
+		BadBlocks:            s.Get("bad-blocks"),
 	}, nil
 }
 
@@ -43,6 +51,7 @@ func (c *Client) Routerboard(ctx context.Context) (domain.SystemRouterboard, err
 	return domain.SystemRouterboard{
 		Routerboard:     s.BoolOr("routerboard", false),
 		Model:           s.Get("model"),
+		BoardName:       s.Get("board-name"),
 		SerialNumber:    s.Get("serial-number"),
 		FirmwareType:    s.Get("firmware-type"),
 		FactoryFirmware: s.Get("factory-firmware"),
@@ -62,10 +71,11 @@ func (c *Client) Clock(ctx context.Context) (domain.SystemClock, error) {
 	}
 	s := reply.Rows[0]
 	return domain.SystemClock{
-		Time:         s.Get("time"),
-		Date:         s.Get("date"),
-		TimeZoneName: s.Get("time-zone-name"),
-		GMTOffset:    s.Get("gmt-offset"),
-		DSTActive:    s.BoolOr("dst-active", false),
+		Time:               s.Get("time"),
+		Date:               s.Get("date"),
+		TimeZoneName:       s.Get("time-zone-name"),
+		GMTOffset:          s.Get("gmt-offset"),
+		TimeZoneAutodetect: s.BoolOr("time-zone-autodetect", false),
+		DSTActive:          s.BoolOr("dst-active", false),
 	}, nil
 }
