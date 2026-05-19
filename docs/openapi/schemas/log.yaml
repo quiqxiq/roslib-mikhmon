@@ -1,0 +1,18 @@
+LogEntryResponse:
+  type: object
+  description: Satu entry log RouterOS dari /log/print (snapshot, bukan stream).
+  required: [id, message]
+  properties:
+    id:
+      type: string
+      example: "*1234"
+    time:
+      type: string
+      example: "10:30:21"
+    topics:
+      type: string
+      description: Topik log (comma-separated). Mis. `hotspot,info,account`.
+      example: "hotspot,info"
+    message:
+      type: string
+      example: "user01 logged in"

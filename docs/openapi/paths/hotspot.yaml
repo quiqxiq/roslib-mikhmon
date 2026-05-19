@@ -1,0 +1,369 @@
+/devices/{device_id}/hotspot/servers:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/CacheQuery'
+    - $ref: '../components/parameters.yaml#/TtlQuery'
+  get:
+    tags: [Hotspot Misc]
+    summary: List hotspot servers
+    responses:
+      '200':
+        description: Server list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotServerResponse' }
+
+/devices/{device_id}/hotspot/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ServerQuery'
+  get:
+    tags: [Hotspot Sessions]
+    summary: List active sessions
+    description: List session hotspot yang sedang aktif (sudah login). Filter `?server=`.
+    responses:
+      '200':
+        description: Active session list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotActiveResponse' }
+
+/devices/{device_id}/hotspot/active/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ServerQuery'
+  get:
+    tags: [Hotspot Sessions]
+    summary: Count active sessions
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/hotspot/active/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [Hotspot Sessions]
+    summary: Get active session by ID
+    responses:
+      '200':
+        description: Session detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotActiveResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [Hotspot Sessions]
+    summary: Kick (disconnect) session
+    description: |
+      Workflow KickActive: hapus cookie user (anti auto-relogin) → hapus
+      active record. Tidak hapus user dari `/hotspot/user`.
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/hosts:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Hotspot Misc]
+    summary: List hosts
+    responses:
+      '200':
+        description: Host list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotHostResponse' }
+
+/devices/{device_id}/hotspot/hosts/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [Hotspot Misc]
+    summary: Delete host binding
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/cookies:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/UserQuery'
+  get:
+    tags: [Hotspot Misc]
+    summary: List cookies
+    description: List auto-login cookies. Filter `?user=`.
+    responses:
+      '200':
+        description: Cookie list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotCookieResponse' }
+
+/devices/{device_id}/hotspot/cookies/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Hotspot Misc]
+    summary: Count cookies
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/hotspot/cookies/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [Hotspot Misc]
+    summary: Delete cookie
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/bindings:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Hotspot Misc]
+    summary: List MAC bindings
+    description: |
+      List `/ip/hotspot/ip-binding`. Type `bypassed` melewatkan captive
+      portal, `blocked` selalu blokir, `regular` aturan default.
+    responses:
+      '200':
+        description: Binding list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotBindingResponse' }
+
+/devices/{device_id}/hotspot/bindings/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Hotspot Misc]
+    summary: Count bindings
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/hotspot/bindings/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [Hotspot Misc]
+    summary: Get binding by ID
+    responses:
+      '200':
+        description: Binding detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotBindingResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [Hotspot Misc]
+    summary: Delete binding
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/bindings/{id}/type:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [Hotspot Misc]
+    summary: Set binding type
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetBindingTypeRequest' }
+          examples:
+            bypassed:
+              summary: Bypass captive portal
+              value: { type: "bypassed" }
+            blocked:
+              summary: Blokir total MAC
+              value: { type: "blocked" }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/bindings/{id}/disabled:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [Hotspot Misc]
+    summary: Toggle binding disabled
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetBoolRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/vouchers/generate:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [Vouchers]
+    summary: Generate batch voucher
+    description: |
+      Workflow GenerateVouchers — create `batch_size` user random di
+      `/ip/hotspot/user`. Username = `prefix` + random(length) dari charset.
+      `user_mode=vc` → user==password (voucher code).
+      `user_mode=up` → user & password independen.
+      Kalau `validity` di-set, comment user di-stamp dengan tanggal
+      expiry (untuk expiry service).
+
+      Response 207 Multi-Status saat partial failure — voucher yang sudah
+      ke-create tetap valid, frontend bisa rollback manual via bulk-delete.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/voucher.yaml#/VoucherGenerateRequest' }
+          examples:
+            voucher_code:
+              summary: 50 voucher code (user==password)
+              value:
+                user_mode: "vc"
+                length: 8
+                prefix: "vc-"
+                charset: "lower_number"
+                profile: "default"
+                time_limit: "24h"
+                validity: "168h"
+                price: 10000
+                sell_price: 12000
+                batch_size: 50
+            user_pass:
+              summary: 10 user+pass terpisah, harian
+              value:
+                user_mode: "up"
+                length: 6
+                charset: "mixed_number"
+                profile: "vip-2m"
+                time_limit: "12h"
+                price: 25000
+                sell_price: 30000
+                batch_size: 10
+    responses:
+      '200':
+        description: Semua voucher berhasil
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/voucher.yaml#/VoucherGenerateResponse' }
+            examples:
+              success:
+                summary: 50 voucher created
+                value:
+                  data:
+                    vouchers:
+                      - { id: "*1", username: "vc-a1b2c3d4", password: "a1b2c3d4" }
+                      - { id: "*2", username: "vc-e5f6g7h8", password: "e5f6g7h8" }
+                    count: 50
+      '207':
+        description: Partial — sebagian voucher gagal di-create
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/voucher.yaml#/VoucherGenerateResponse' }
+            examples:
+              partial:
+                summary: 9 dari 10 sukses, 10th duplikat
+                value:
+                  data:
+                    vouchers:
+                      - { id: "*1", username: "vc-aaaa1111", password: "aaaa1111" }
+                      - { id: "*2", username: "vc-bbbb2222", password: "bbbb2222" }
+                    count: 9
+                    partial: true
+                    error: "UserAdd \"vc-cccc3333\": mikrotik: duplicate name"
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }

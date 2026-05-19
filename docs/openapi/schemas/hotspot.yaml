@@ -1,0 +1,222 @@
+HotspotUserResponse:
+  type: object
+  description: |
+    Representasi 1 user hotspot. Password TIDAK di-expose. `limit_bytes_in/out`
+    adalah quota per-direction (RouterOS v7+); `limit_bytes_total` adalah
+    quota total (RouterOS v6 + v7).
+  required: [id, name, disabled]
+  properties:
+    id:                 { type: string, example: "*1" }
+    name:               { type: string, example: "user01" }
+    profile:            { type: string, example: "default" }
+    server:             { type: string, example: "hotspot1" }
+    disabled:           { type: boolean }
+    comment:            { type: string, example: "jan/06/2099 14:32:01" }
+    mac_address:        { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    address:            { type: string, example: "10.0.0.5" }
+    email:              { type: string, example: "user01@example.com" }
+    routes:             { type: string }
+    limit_uptime:       { type: string, example: "24h" }
+    limit_bytes_total:  { type: integer, format: int64 }
+    limit_bytes_in:     { type: integer, format: int64 }
+    limit_bytes_out:    { type: integer, format: int64 }
+    bytes_in:           { type: integer, format: int64 }
+    bytes_out:          { type: integer, format: int64 }
+    uptime:             { type: string, example: "1h23m45s" }
+
+HotspotUserCreateRequest:
+  type: object
+  required: [name]
+  properties:
+    name:              { type: string, minLength: 1, maxLength: 128, example: "user01" }
+    password:          { type: string, maxLength: 128, format: password, example: "p4ssw0rd" }
+    profile:           { type: string, example: "default" }
+    server:            { type: string, example: "all" }
+    disabled:          { type: boolean, nullable: true }
+    limit_uptime:      { type: string, example: "24h" }
+    limit_bytes_total: { type: integer, format: int64, minimum: 0 }
+    limit_bytes_in:    { type: integer, format: int64, minimum: 0 }
+    limit_bytes_out:   { type: integer, format: int64, minimum: 0 }
+    comment:           { type: string, example: "jan/06/2099 14:32:01" }
+
+HotspotUserUpdateRequest:
+  type: object
+  description: Sparse update. Field comment & mac_address bersifat nullable (kirim "" untuk kosongkan).
+  properties:
+    name:              { type: string, maxLength: 128 }
+    password:          { type: string, maxLength: 128, format: password }
+    profile:           { type: string }
+    server:            { type: string }
+    disabled:          { type: boolean, nullable: true }
+    limit_uptime:      { type: string }
+    limit_bytes_total: { type: integer, format: int64, nullable: true }
+    limit_bytes_in:    { type: integer, format: int64, nullable: true }
+    limit_bytes_out:   { type: integer, format: int64, nullable: true }
+    comment:           { type: string, nullable: true }
+    mac_address:       { type: string, nullable: true }
+
+SetBoolRequest:
+  type: object
+  required: [value]
+  properties:
+    value: { type: boolean }
+
+SetStringRequest:
+  type: object
+  required: [value]
+  properties:
+    value:
+      type: string
+      minLength: 1
+      example: "jan/06/2099 14:32:01"
+
+BulkIDsRequest:
+  type: object
+  required: [ids]
+  properties:
+    ids:
+      type: array
+      items: { type: string, minLength: 1 }
+      minItems: 1
+      example: ["*1", "*2", "*3"]
+
+HotspotProfileResponse:
+  type: object
+  required: [id, name, shared_users, add_mac_cookie, transparent_proxy]
+  properties:
+    id:                  { type: string, example: "*1" }
+    name:                { type: string, example: "default" }
+    address_pool:        { type: string, example: "hs-pool" }
+    rate_limit:          { type: string, example: "2M/2M" }
+    shared_users:        { type: integer, minimum: 0, example: 1 }
+    status_autorefresh:  { type: string, example: "1m" }
+    on_login:            { type: string, example: ":log info $user" }
+    on_logout:           { type: string }
+    parent_queue:        { type: string }
+    idle_timeout:        { type: string, example: "5m" }
+    keepalive_timeout:   { type: string, example: "2m" }
+    session_timeout:     { type: string, example: "1h" }
+    mac_cookie_timeout:  { type: string, example: "3d" }
+    add_mac_cookie:      { type: boolean }
+    transparent_proxy:   { type: boolean }
+
+HotspotProfileCreateRequest:
+  type: object
+  required: [name]
+  properties:
+    name:                { type: string, minLength: 1, maxLength: 128, example: "vip-2m" }
+    address_pool:        { type: string, example: "hs-pool" }
+    rate_limit:          { type: string, example: "2M/2M" }
+    shared_users:        { type: integer, minimum: 0, example: 1 }
+    status_autorefresh:  { type: string, example: "1m" }
+    on_login:            { type: string }
+    parent_queue:        { type: string }
+
+HotspotProfileUpdateRequest:
+  type: object
+  description: Sparse update.
+  properties:
+    name:                { type: string }
+    address_pool:        { type: string }
+    rate_limit:          { type: string }
+    shared_users:        { type: integer, minimum: 0, nullable: true }
+    status_autorefresh:  { type: string }
+    on_login:            { type: string, nullable: true }
+    parent_queue:        { type: string }
+
+HotspotProfileDeleteRequest:
+  type: object
+  description: |
+    Optional body untuk DELETE profile. Kalau `name` di-set, workflow akan
+    cleanup scheduler/script yang nama-nya match (cascade delete).
+  properties:
+    name: { type: string }
+
+HotspotActiveResponse:
+  type: object
+  description: Sesi hotspot yang sedang aktif (sudah login).
+  required: [id, user, disabled]
+  properties:
+    id:                  { type: string, example: "*1" }
+    user:                { type: string, example: "user01" }
+    address:             { type: string, example: "10.0.0.5" }
+    mac_address:         { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    server:              { type: string, example: "hotspot1" }
+    login_by:            { type: string, example: "http-pap" }
+    uptime:              { type: string, example: "12m34s" }
+    bytes_in:            { type: integer, format: int64 }
+    bytes_out:           { type: integer, format: int64 }
+    packets_in:          { type: integer, format: int64 }
+    packets_out:         { type: integer, format: int64 }
+    idle_time:           { type: string, example: "5s" }
+    session_time_left:   { type: string, example: "47m" }
+    keepalive_timeout:   { type: string }
+    comment:             { type: string }
+
+HotspotBindingResponse:
+  type: object
+  required: [id, type, disabled, bypassed]
+  properties:
+    id:          { type: string, example: "*1" }
+    mac_address: { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    address:     { type: string, example: "10.0.0.5" }
+    to_address:  { type: string, example: "10.0.0.5" }
+    server:      { type: string, example: "all" }
+    type:        { type: string, enum: [regular, bypassed, blocked], example: "regular" }
+    disabled:    { type: boolean }
+    bypassed:    { type: boolean }
+    comment:     { type: string }
+
+SetBindingTypeRequest:
+  type: object
+  required: [type]
+  properties:
+    type:
+      type: string
+      enum: [regular, bypassed, blocked]
+      example: "bypassed"
+
+HotspotHostResponse:
+  type: object
+  required: [id, authorized, bypassed, dynamic, dhcp]
+  properties:
+    id:                { type: string }
+    mac_address:       { type: string }
+    address:           { type: string }
+    to_address:        { type: string }
+    server:            { type: string }
+    authorized:        { type: boolean }
+    bypassed:          { type: boolean }
+    dynamic:           { type: boolean }
+    dhcp:              { type: boolean }
+    uptime:            { type: string }
+    idle_time:         { type: string }
+    keepalive_timeout: { type: string }
+    bytes_in:          { type: integer, format: int64 }
+    bytes_out:         { type: integer, format: int64 }
+    comment:           { type: string }
+
+HotspotCookieResponse:
+  type: object
+  required: [id]
+  properties:
+    id:          { type: string, example: "*1" }
+    user:        { type: string, example: "user01" }
+    domain:      { type: string }
+    mac_address: { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    expires_in:  { type: string, example: "23h" }
+
+HotspotServerResponse:
+  type: object
+  required: [id, name, disabled]
+  properties:
+    id:                 { type: string, example: "*1" }
+    name:               { type: string, example: "hotspot1" }
+    profile:            { type: string, example: "default" }
+    interface:          { type: string, example: "ether2" }
+    address_pool:       { type: string, example: "hs-pool" }
+    addresses_per_mac:  { type: string, example: "2" }
+    idle_timeout:       { type: string, example: "5m" }
+    keepalive_timeout:  { type: string }
+    login_timeout:      { type: string, example: "2m" }
+    disabled:           { type: boolean }

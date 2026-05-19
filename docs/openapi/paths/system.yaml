@@ -1,0 +1,198 @@
+/devices/{device_id}/system/identity:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/CacheQuery'
+    - $ref: '../components/parameters.yaml#/TtlQuery'
+  get:
+    tags: [System]
+    summary: Get router identity
+    description: "`/system/identity` — nama router. Cache opsional via `?cache=true&ttl=5m`."
+    responses:
+      '200':
+        description: Identity
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SystemIdentityResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '504': { $ref: '../components/responses.yaml#/ErrorTimeout' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/resource:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System]
+    summary: Get system resource (CPU/mem/HDD)
+    description: Snapshot `/system/resource`.
+    responses:
+      '200':
+        description: Resource snapshot
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SystemResourceResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/routerboard:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System]
+    summary: Get routerboard / firmware info
+    responses:
+      '200':
+        description: Routerboard info
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SystemRouterboardResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/clock:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System]
+    summary: Get system clock & timezone
+    responses:
+      '200':
+        description: Clock
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SystemClockResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/reboot:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [System]
+    summary: Reboot router (DESTRUCTIVE)
+    description: |
+      ⚠️ Memicu reboot router. Koneksi service akan putus selama ~30-60 detik;
+      device manager akan auto-reconnect setelah router online lagi.
+    responses:
+      '200':
+        description: Reboot issued
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/ActionResponse' }
+            examples:
+              issued:
+                value: { data: { action: "reboot", status: "issued" } }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/shutdown:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [System]
+    summary: Shutdown router (DESTRUCTIVE)
+    description: |
+      ⚠️ Power-off router. Tidak ada auto-reconnect; perlu intervensi fisik
+      untuk power-on lagi.
+    responses:
+      '200':
+        description: Shutdown issued
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/ActionResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/system/logging/by-prefix/{prefix}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/PrefixPath'
+  get:
+    tags: [System]
+    summary: Count log entries by topic prefix
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/system/logging/hotspot-disk:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [System]
+    summary: Tambah action logging hotspot-disk
+    description: |
+      Side-effect di RouterOS: tambah action `logging-hotspot-disk` ke
+      `/system/logging/action` supaya log hotspot di-write ke disk.
+      Idempotent: kalau sudah ada, no-op.
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema: { $ref: '../schemas/system.yaml#/LoggingAddHotspotDiskRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}/log:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/TopicsQuery'
+  get:
+    tags: [System]
+    summary: List log entries (snapshot)
+    description: |
+      Snapshot `/log/print` (bukan follow). Untuk stream live pakai
+      `GET /stream/log`.
+    responses:
+      '200':
+        description: Log list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/log.yaml#/LogEntryResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }

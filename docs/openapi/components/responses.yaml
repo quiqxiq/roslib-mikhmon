@@ -1,0 +1,126 @@
+# Reusable error responses sesuai dengan envelope di api/dto/envelope.go.
+# Tiap response sudah punya example payload supaya UI Scalar informatif.
+
+ErrorBadRequest:
+  description: Request tidak valid (parameter atau body salah).
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        invalid_argument:
+          summary: Argumen invalid
+          value:
+            error:
+              code: INVALID_ARGUMENT
+              message: "id tidak boleh kosong"
+              path: "/api/v1/devices/rb-main/hotspot/users/"
+
+ErrorValidation:
+  description: Body request gagal validasi schema (gin binding).
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        validation_failed:
+          summary: Field wajib tidak ada
+          value:
+            error:
+              code: VALIDATION
+              message: "request validation failed"
+              path: "/api/v1/devices/rb-main/hotspot/users"
+              details: "Key: 'HotspotUserCreateRequest.Name' Error:Field validation for 'Name' failed on the 'required' tag"
+
+ErrorNotFound:
+  description: Resource yang dirujuk tidak ditemukan.
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        user_not_found:
+          summary: User tidak ada
+          value:
+            error:
+              code: NOT_FOUND
+              message: "mikrotik: not found"
+              path: "/api/v1/devices/rb-main/hotspot/users/*99"
+
+ErrorDeviceNotFound:
+  description: Device tidak ditemukan atau tidak terhubung. Dikembalikan oleh DeviceMiddleware.
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        device_offline:
+          summary: Device offline
+          value:
+            error:
+              code: DEVICE_NOT_FOUND
+              message: "device not found or not connected"
+              path: "/api/v1/devices/rb-main/system/identity"
+
+ErrorConflict:
+  description: Operasi konflik dengan state existing (mis. ambiguous match).
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        ambiguous:
+          summary: Ambiguous match
+          value:
+            error:
+              code: AMBIGUOUS
+              message: "mikrotik: ambiguous: multiple matches"
+              path: "/api/v1/devices/rb-main/hotspot/users/by-name/user01"
+
+ErrorTimeout:
+  description: Operasi melewati batas waktu (ctx deadline / 5xx upstream timeout).
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        upstream_timeout:
+          summary: Router lambat respond
+          value:
+            error:
+              code: TIMEOUT
+              message: "operation timed out"
+              path: "/api/v1/devices/rb-main/hotspot/users"
+
+ErrorInternal:
+  description: Error internal server. Dipakai untuk uncategorized + panic recovery.
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        internal:
+          summary: Unexpected error
+          value:
+            error:
+              code: INTERNAL
+              message: "unexpected error during operation"
+              path: "/api/v1/devices/rb-main/hotspot/users"
+
+ErrorServiceUnavailable:
+  description: Dependency external (InfluxDB / DB) sedang tidak available.
+  content:
+    application/json:
+      schema:
+        $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      examples:
+        influx_down:
+          summary: InfluxDB tidak terhubung
+          value:
+            error:
+              code: SERVICE_UNAVAILABLE
+              message: "history backend unavailable"
+              path: "/api/v1/devices/rb-main/history/resource"
+
+NoContentResponse:
+  description: Operasi sukses tanpa body response (204 No Content).

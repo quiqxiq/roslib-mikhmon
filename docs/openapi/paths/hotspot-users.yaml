@@ -1,0 +1,280 @@
+/devices/{device_id}/hotspot/users:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ProfileQuery'
+    - $ref: '../components/parameters.yaml#/CommentQuery'
+  get:
+    tags: [Hotspot Users]
+    summary: List hotspot users
+    description: List `/ip/hotspot/user`. Filter optional `?profile=` atau `?comment=` (post-filter).
+    responses:
+      '200':
+        description: User list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotUserResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+  post:
+    tags: [Hotspot Users]
+    summary: Create user
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/HotspotUserCreateRequest' }
+          examples:
+            voucher_user:
+              summary: User dengan comment expiry (untuk expiry service)
+              value:
+                name: "user01"
+                password: "p4ssw0rd"
+                profile: "default"
+                server: "all"
+                limit_uptime: "24h"
+                comment: "may/19/2027 23:59:59"
+    responses:
+      '201':
+        description: User created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+            examples:
+              success:
+                value: { data: { id: "*5" } }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '409': { $ref: '../components/responses.yaml#/ErrorConflict' }
+
+/devices/{device_id}/hotspot/users/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Hotspot Users]
+    summary: Count hotspot users
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/hotspot/users/by-name/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NamePath'
+  get:
+    tags: [Hotspot Users]
+    summary: Get user by username
+    responses:
+      '200':
+        description: User detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotUserResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+      '409': { $ref: '../components/responses.yaml#/ErrorConflict' }
+
+/devices/{device_id}/hotspot/users/bulk-delete:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [Hotspot Users]
+    summary: Bulk delete users
+    description: |
+      Hapus banyak user sekaligus. Tiap delete jalan cascade (lihat
+      DELETE /hotspot/users/{id}). Tidak fail-fast — kalau ada yang
+      gagal, response tetap 200 dengan rincian per ID di `failed`.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/BulkIDsRequest' }
+          examples:
+            bulk_ids:
+              summary: 3 user untuk dihapus
+              value: { ids: ["*1", "*2", "*3"] }
+    responses:
+      '200':
+        description: Bulk result
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/BulkResult' }
+                    meta:
+                      type: object
+                      properties:
+                        total: { type: integer }
+                        success_count: { type: integer }
+                        failed_count: { type: integer }
+            examples:
+              all_success:
+                summary: Semua sukses
+                value:
+                  data:
+                    succeeded: ["*1", "*2", "*3"]
+                    failed: {}
+                  meta: { total: 3, success_count: 3, failed_count: 0 }
+              partial:
+                summary: Sebagian gagal
+                value:
+                  data:
+                    succeeded: ["*1", "*3"]
+                    failed: { "*2": "mikrotik: not found" }
+                  meta: { total: 3, success_count: 2, failed_count: 1 }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/users/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [Hotspot Users]
+    summary: Get user by RouterOS ID
+    responses:
+      '200':
+        description: User detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotUserResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  put:
+    tags: [Hotspot Users]
+    summary: Update user
+    description: Sparse update. Field kosong tidak diubah; field nullable bisa di-set "" untuk kosongkan.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/HotspotUserUpdateRequest' }
+          examples:
+            change_profile:
+              summary: Pindahkan ke profile lain
+              value: { profile: "vip" }
+            extend_quota:
+              summary: Tambah quota
+              value: { limit_bytes_total: 10737418240 }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [Hotspot Users]
+    summary: Delete user (cascade)
+    description: |
+      Workflow cascade: hapus user + cleanup script/scheduler yang nama-nya
+      sama (mis. transaksi atau scheduler expiry per-user).
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/users/{id}/disabled:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [Hotspot Users]
+    summary: Toggle disabled
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetBoolRequest' }
+          examples:
+            disable: { value: { value: true } }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/users/{id}/expiry:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [Hotspot Users]
+    summary: Set expiry comment
+    description: |
+      Tulis comment user dengan tanggal expiry (format mikhmon
+      `<mon>/dd/yyyy hh:mm:ss` lowercase). Diparse oleh expiry service.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetStringRequest' }
+          examples:
+            expiry: { value: { value: "jan/06/2099 14:32:01" } }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/users/{id}/mac:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [Hotspot Users]
+    summary: Lock user ke MAC tertentu
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetStringRequest' }
+          examples:
+            lock: { value: { value: "AA:BB:CC:DD:EE:FF" } }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/users/{id}/reset-counters:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  post:
+    tags: [Hotspot Users]
+    summary: Reset byte counters
+    description: "`/ip/hotspot/user/reset-counters` — reset bytes-in/out tanpa hapus user."
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/users/{id}/reset-usage:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  post:
+    tags: [Hotspot Users]
+    summary: Reset limit-uptime + comment
+    description: Set `limit-uptime=0` dan kosongkan comment (reset user ke kondisi awal).
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

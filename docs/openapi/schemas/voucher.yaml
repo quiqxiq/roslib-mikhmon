@@ -1,0 +1,107 @@
+VoucherGenerateRequest:
+  type: object
+  description: |
+    Body untuk generator batch voucher. Akan create N user (BatchSize) di
+    /ip/hotspot/user dengan username random dari Charset. Kalau Validity
+    di-set, comment di-stamp dengan tanggal expiry format Mikhmon
+    (`<mon>/dd/yyyy hh:mm:ss` lowercase).
+  required: [length, charset, profile, batch_size]
+  properties:
+    server:
+      type: string
+      description: Default `all`.
+      example: "all"
+    user_mode:
+      type: string
+      enum: [up, vc]
+      default: up
+      description: |
+        - `up`: user & password generated independen.
+        - `vc`: user = password (voucher code).
+    length:
+      type: integer
+      minimum: 4
+      maximum: 32
+      example: 8
+    prefix:
+      type: string
+      maxLength: 16
+      description: Prefix username (tidak masuk hitungan length).
+      example: "vc-"
+    charset:
+      type: string
+      enum: [lower, upper, mixed, number, lower_number, upper_number, mixed_number]
+      example: "lower_number"
+    profile:
+      type: string
+      minLength: 1
+      maxLength: 128
+      example: "default"
+    time_limit:
+      type: string
+      description: limit-uptime per user (RouterOS duration).
+      example: "24h"
+    data_limit:
+      type: integer
+      format: int64
+      minimum: 0
+      description: limit-bytes-total per user.
+    comment:
+      type: string
+      maxLength: 128
+      description: Comment manual (akan dikombinasi dengan stamp validity).
+    validity:
+      type: string
+      description: |
+        Go duration (mis. `168h` untuk 7 hari). Kalau set, comment user akan
+        di-stamp `<expiry-date>` format mikhmon untuk diproses expiry service.
+      example: "168h"
+    price:
+      type: integer
+      minimum: 0
+      description: Harga normal voucher (untuk laporan).
+      example: 10000
+    sell_price:
+      type: integer
+      minimum: 0
+      example: 12000
+    lock_to_mac:
+      type: boolean
+      description: Reserved — lock username ke MAC pertama yang login.
+    batch_size:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      example: 50
+
+VoucherResponse:
+  type: object
+  required: [id, username, password]
+  properties:
+    id:       { type: string, example: "*42" }
+    username: { type: string, example: "vc-a1b2c3d4" }
+    password: { type: string, format: password, example: "x9y8z7w6" }
+
+VoucherGenerateResponse:
+  type: object
+  description: |
+    Response body. Status 200 = semua voucher berhasil, 207 = partial
+    (`partial=true`, `error` berisi pesan). Voucher yang berhasil di-create
+    tetap valid di RouterOS — caller dapat memutuskan rollback manual via
+    bulk-delete.
+  required: [vouchers, count]
+  properties:
+    vouchers:
+      type: array
+      items: { $ref: '#/VoucherResponse' }
+    count:
+      type: integer
+      description: Jumlah voucher yang berhasil di-create.
+      example: 50
+    partial:
+      type: boolean
+      description: True kalau response 207 Multi-Status.
+    error:
+      type: string
+      description: Pesan error saat partial.
+      example: "UserAdd \"vc-xx\": mikrotik: duplicate name"

@@ -1,0 +1,43 @@
+HealthStatus:
+  type: object
+  description: |
+    Status komposit service. `ok=true` artinya semua dependency yang relevan
+    (DB, device manager, optional InfluxDB) sehat. Status code HTTP juga 200
+    saat ok, 503 saat tidak ok.
+  required: [ok, db, devices]
+  properties:
+    ok:
+      type: boolean
+      example: true
+    db:
+      type: string
+      description: Status DB ping. `ok`, `skipped` (DB tidak di-config), atau pesan error.
+      example: "ok"
+    devices:
+      $ref: '#/DeviceHealthStat'
+    influx:
+      type: string
+      description: Status InfluxDB. Hanya muncul kalau Influx di-enable.
+      example: "ok"
+    sse_subscribers:
+      type: object
+      additionalProperties: { type: integer }
+      description: Map topic SSE → jumlah subscriber aktif (hanya topic dengan subs>0).
+      example: { "hotspot-active:rb-main": 2, "log:all:rb-main": 1 }
+    sse_dropped:
+      type: object
+      additionalProperties: { type: integer, format: int64 }
+      description: Map topic SSE → jumlah event yang di-drop karena subscriber lambat.
+      example: { "hotspot-active:rb-main": 5 }
+
+DeviceHealthStat:
+  type: object
+  description: Ringkasan koneksi router yang dikelola.
+  required: [connected, total]
+  properties:
+    connected:
+      type: integer
+      example: 3
+    total:
+      type: integer
+      example: 4

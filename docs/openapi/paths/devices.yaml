@@ -1,0 +1,162 @@
+/devices:
+  get:
+    tags: [Devices]
+    summary: List all devices
+    description: List semua device yang ter-register, termasuk yang `active=false`.
+    responses:
+      '200':
+        description: List device
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/device.yaml#/DeviceResponse' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+  post:
+    tags: [Devices]
+    summary: Create new device
+    description: |
+      Daftarkan device baru ke service + langsung dial. Kalau dial gagal,
+      device tetap di-save tapi response berisi `warning` (HTTP 201 tetap).
+      Frontend bisa tampilkan notice tanpa kehilangan record.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/device.yaml#/DeviceCreateRequest' }
+          examples:
+            tls_router:
+              summary: Router via API-SSL (TLS)
+              value:
+                slug: rb-main
+                display_name: "RB Main Office"
+                address: "192.168.88.1:8729"
+                username: admin
+                password: secret123
+                use_tls: true
+                expiry_check_interval: "2m"
+            plain_router:
+              summary: Router via API plain
+              value:
+                slug: rb-warehouse
+                display_name: "RB Warehouse"
+                address: "192.168.99.1:8728"
+                username: admin
+                password: secret123
+                use_tls: false
+    responses:
+      '201':
+        description: Device created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/device.yaml#/DeviceWriteResponse' }
+            examples:
+              success:
+                value:
+                  data:
+                    device:
+                      id: 1
+                      slug: rb-main
+                      display_name: "RB Main Office"
+                      address: "192.168.88.1:8729"
+                      username: admin
+                      use_tls: true
+                      status: "connected"
+                      expiry_check_interval: "2m"
+                      active: true
+                      created_at: "2026-05-19T10:00:00Z"
+              with_warning:
+                summary: Dial gagal tapi record tersimpan
+                value:
+                  data:
+                    device:
+                      id: 2
+                      slug: rb-warehouse
+                      display_name: "RB Warehouse"
+                      address: "192.168.99.1:8728"
+                      username: admin
+                      use_tls: false
+                      status: "error"
+                      last_error: "dial tcp 192.168.99.1:8728: connect: no route to host"
+                      expiry_check_interval: "2m"
+                      active: true
+                      created_at: "2026-05-19T10:01:00Z"
+                    warning: "device saved but connection failed: dial tcp ..."
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+/devices/{device_id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Devices]
+    summary: Get device by ID/slug
+    responses:
+      '200':
+        description: Device detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/device.yaml#/DeviceResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+  put:
+    tags: [Devices]
+    summary: Update device
+    description: |
+      Sparse update. Field yang tidak di-set tidak akan diubah. Kalau
+      address/username/password berubah, koneksi lama di-disconnect dan
+      device di-dial ulang dengan credential baru.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/device.yaml#/DeviceUpdateRequest' }
+          examples:
+            rotate_password:
+              summary: Rotate password saja
+              value:
+                password: "new-secret-456"
+            disable:
+              summary: Disable device tanpa hapus
+              value:
+                active: false
+    responses:
+      '200':
+        description: Device updated
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/device.yaml#/DeviceWriteResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+  delete:
+    tags: [Devices]
+    summary: Delete device
+    description: Hapus device dari DB + disconnect. Tidak menyentuh state di RouterOS.
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }

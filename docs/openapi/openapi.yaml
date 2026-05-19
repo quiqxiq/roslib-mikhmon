@@ -1,0 +1,407 @@
+openapi: 3.0.3
+
+info:
+  title: roslib-mikhmon HTTP API
+  version: "1.0.0"
+  description: |
+    REST + Server-Sent Events service di atas RouterOS API. Multi-router:
+    semua endpoint (kecuali Device CRUD & Health) berada di bawah
+    `/api/v1/devices/{device_id}/...` agar satu instance bisa melayani
+    banyak router sekaligus.
+
+    ## Response envelope
+
+    Semua endpoint pakai envelope konsisten:
+
+    - **Success single**: `{ "data": { ... } }`
+    - **Success list**:   `{ "data": [ ... ], "meta": { "count": N } }`
+    - **Error**:          `{ "error": { "code": "...", "message": "...", "path": "..." } }`
+
+    Error `code` stabil — frontend bisa branch dengan aman. Mapping:
+
+    | Code | HTTP | Trigger |
+    |---|---|---|
+    | `NOT_FOUND` | 404 | `mikrotik.ErrNotFound` |
+    | `INVALID_ARGUMENT` | 400 | `mikrotik.ErrInvalidArgument` |
+    | `AMBIGUOUS` | 409 | `mikrotik.ErrAmbiguous` |
+    | `VALIDATION` | 400 | body gagal validasi `gin` binding |
+    | `TIMEOUT` | 504 | `context.DeadlineExceeded` |
+    | `CANCELED` | 499 | `context.Canceled` |
+    | `INTERNAL` | 500 | uncategorized / panic recovery |
+    | `DEVICE_NOT_FOUND` | 404 | device middleware: slug tidak terhubung |
+    | `SERVICE_UNAVAILABLE` | 503 | InfluxDB / dependency lain down |
+
+    Setiap response menyertakan header `X-Request-ID` (16-char hex) untuk
+    korelasi log.
+
+    ## Authentication
+
+    Service ini **tidak punya auth built-in**. Bind default
+    `127.0.0.1:8080` (local-only). Untuk eksposur publik, delegasi ke
+    reverse proxy (nginx/caddy) yang handle TLS + API key/JWT.
+
+    ## Cara pakai SSE
+
+    Endpoint `/stream/*` mengembalikan `text/event-stream`. Format event:
+    ```
+    event: <type>
+    id: <id>
+    data: <JSON payload>
+
+    ```
+    JS contoh: `new EventSource('/api/v1/devices/rb-main/stream/hotspot/active')`.
+
+  contact:
+    name: roslib-mikhmon
+    url: https://github.com/quiqxiq/roslib-mikhmon
+  license:
+    name: Internal
+
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+    description: Default local-only bind
+
+tags:
+  - name: Devices
+    description: |
+      CRUD device (slug, address, credential). Tidak butuh router fisik
+      nyala — endpoint ini hanya menyentuh database.
+  - name: System
+    description: |
+      Sistem-level RouterOS: identity, resource (CPU/mem/HDD), routerboard,
+      clock, reboot/shutdown, logging config, /log read.
+  - name: System Scripts
+    description: CRUD `/system/script` (workflow on-login, transaksi, dll.).
+  - name: System Schedulers
+    description: CRUD `/system/scheduler` (expiry job, kron, dll.).
+  - name: Hotspot Users
+    description: CRUD user hotspot, bulk delete, reset counter/usage.
+  - name: Hotspot Profiles
+    description: CRUD profile hotspot.
+  - name: Hotspot Sessions
+    description: List & kick session aktif hotspot.
+  - name: Hotspot Misc
+    description: Server, Host, Cookie, Binding.
+  - name: Vouchers
+    description: Generator batch voucher (workflow).
+  - name: Network
+    description: Interface, IP pool, ARP, DHCP lease, simple queue.
+  - name: PPP
+    description: PPP secret, profile, active session.
+  - name: Streaming
+    description: |
+      Server-Sent Events untuk update real-time. Tiap endpoint
+      menggunakan broker shared yang fan-out ke banyak subscriber tanpa
+      duplikasi backend stream.
+  - name: History
+    description: |
+      Query data historis dari InfluxDB (CPU, traffic, sales). Hanya
+      tersedia kalau `INFLUX_URL` di-set saat startup.
+  - name: Reports
+    description: |
+      Laporan penjualan voucher dari database lokal (Postgres). Tetap
+      bisa di-query meskipun router offline.
+  - name: Health
+    description: Health probe (DB + device manager + InfluxDB + SSE).
+
+paths:
+  /healthz:
+    $ref: './paths/health.yaml#/~1healthz'
+
+  /devices:
+    $ref: './paths/devices.yaml#/~1devices'
+  /devices/{device_id}:
+    $ref: './paths/devices.yaml#/~1devices~1{device_id}'
+
+  /devices/{device_id}/system/identity:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1identity'
+  /devices/{device_id}/system/resource:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1resource'
+  /devices/{device_id}/system/routerboard:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1routerboard'
+  /devices/{device_id}/system/clock:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1clock'
+  /devices/{device_id}/system/reboot:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1reboot'
+  /devices/{device_id}/system/shutdown:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1shutdown'
+  /devices/{device_id}/system/logging/by-prefix/{prefix}:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1logging~1by-prefix~1{prefix}'
+  /devices/{device_id}/system/logging/hotspot-disk:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1logging~1hotspot-disk'
+  /devices/{device_id}/log:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1log'
+
+  /devices/{device_id}/system/scripts:
+    $ref: './paths/system-scripts.yaml#/~1devices~1{device_id}~1system~1scripts'
+  /devices/{device_id}/system/scripts/{id}:
+    $ref: './paths/system-scripts.yaml#/~1devices~1{device_id}~1system~1scripts~1{id}'
+
+  /devices/{device_id}/system/schedulers:
+    $ref: './paths/system-schedulers.yaml#/~1devices~1{device_id}~1system~1schedulers'
+  /devices/{device_id}/system/schedulers/count:
+    $ref: './paths/system-schedulers.yaml#/~1devices~1{device_id}~1system~1schedulers~1count'
+  /devices/{device_id}/system/schedulers/{id}:
+    $ref: './paths/system-schedulers.yaml#/~1devices~1{device_id}~1system~1schedulers~1{id}'
+
+  /devices/{device_id}/hotspot/users:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users'
+  /devices/{device_id}/hotspot/users/count:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1count'
+  /devices/{device_id}/hotspot/users/by-name/{name}:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1by-name~1{name}'
+  /devices/{device_id}/hotspot/users/bulk-delete:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1bulk-delete'
+  /devices/{device_id}/hotspot/users/{id}:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}'
+  /devices/{device_id}/hotspot/users/{id}/disabled:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}~1disabled'
+  /devices/{device_id}/hotspot/users/{id}/expiry:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}~1expiry'
+  /devices/{device_id}/hotspot/users/{id}/mac:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}~1mac'
+  /devices/{device_id}/hotspot/users/{id}/reset-counters:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}~1reset-counters'
+  /devices/{device_id}/hotspot/users/{id}/reset-usage:
+    $ref: './paths/hotspot-users.yaml#/~1devices~1{device_id}~1hotspot~1users~1{id}~1reset-usage'
+
+  /devices/{device_id}/hotspot/profiles:
+    $ref: './paths/hotspot-profiles.yaml#/~1devices~1{device_id}~1hotspot~1profiles'
+  /devices/{device_id}/hotspot/profiles/by-name/{name}:
+    $ref: './paths/hotspot-profiles.yaml#/~1devices~1{device_id}~1hotspot~1profiles~1by-name~1{name}'
+  /devices/{device_id}/hotspot/profiles/{id}:
+    $ref: './paths/hotspot-profiles.yaml#/~1devices~1{device_id}~1hotspot~1profiles~1{id}'
+
+  /devices/{device_id}/hotspot/servers:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1servers'
+  /devices/{device_id}/hotspot/active:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1active'
+  /devices/{device_id}/hotspot/active/count:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1active~1count'
+  /devices/{device_id}/hotspot/active/{id}:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1active~1{id}'
+  /devices/{device_id}/hotspot/hosts:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1hosts'
+  /devices/{device_id}/hotspot/hosts/{id}:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1hosts~1{id}'
+  /devices/{device_id}/hotspot/cookies:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1cookies'
+  /devices/{device_id}/hotspot/cookies/count:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1cookies~1count'
+  /devices/{device_id}/hotspot/cookies/{id}:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1cookies~1{id}'
+  /devices/{device_id}/hotspot/bindings:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1bindings'
+  /devices/{device_id}/hotspot/bindings/count:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1bindings~1count'
+  /devices/{device_id}/hotspot/bindings/{id}:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1bindings~1{id}'
+  /devices/{device_id}/hotspot/bindings/{id}/type:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1bindings~1{id}~1type'
+  /devices/{device_id}/hotspot/bindings/{id}/disabled:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1bindings~1{id}~1disabled'
+  /devices/{device_id}/hotspot/vouchers/generate:
+    $ref: './paths/hotspot.yaml#/~1devices~1{device_id}~1hotspot~1vouchers~1generate'
+
+  /devices/{device_id}/network/interfaces:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1interfaces'
+  /devices/{device_id}/network/pools:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1pools'
+  /devices/{device_id}/network/arp:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1arp'
+  /devices/{device_id}/network/arp/{id}:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1arp~1{id}'
+  /devices/{device_id}/network/dhcp-leases:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1dhcp-leases'
+  /devices/{device_id}/network/dhcp-leases/count:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1dhcp-leases~1count'
+  /devices/{device_id}/network/dhcp-leases/{id}:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1dhcp-leases~1{id}'
+  /devices/{device_id}/network/queues:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1queues'
+  /devices/{device_id}/network/queues/{id}:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1queues~1{id}'
+
+  /devices/{device_id}/ppp/secrets:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1secrets'
+  /devices/{device_id}/ppp/secrets/by-name/{name}:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1secrets~1by-name~1{name}'
+  /devices/{device_id}/ppp/secrets/{id}:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1secrets~1{id}'
+  /devices/{device_id}/ppp/secrets/{id}/disabled:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1secrets~1{id}~1disabled'
+  /devices/{device_id}/ppp/profiles:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1profiles'
+  /devices/{device_id}/ppp/profiles/by-name/{name}:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1profiles~1by-name~1{name}'
+  /devices/{device_id}/ppp/profiles/{id}:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1profiles~1{id}'
+  /devices/{device_id}/ppp/active:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1active'
+  /devices/{device_id}/ppp/active/{id}:
+    $ref: './paths/ppp.yaml#/~1devices~1{device_id}~1ppp~1active~1{id}'
+
+  /devices/{device_id}/stream/hotspot/active:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1hotspot~1active'
+  /devices/{device_id}/stream/ppp/active:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1ppp~1active'
+  /devices/{device_id}/stream/log:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1log'
+  /devices/{device_id}/stream/system/resource:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1system~1resource'
+  /devices/{device_id}/stream/network/interfaces/{name}/traffic:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1interfaces~1{name}~1traffic'
+  /devices/{device_id}/stream/network/interfaces/stats:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1interfaces~1stats'
+  /devices/{device_id}/stream/network/queues/stats:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1queues~1stats'
+
+  /devices/{device_id}/history/resource:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1resource'
+  /devices/{device_id}/history/interfaces:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1interfaces'
+  /devices/{device_id}/history/hotspot/users:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1hotspot~1users'
+  /devices/{device_id}/history/hotspot/active:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1hotspot~1active'
+  /devices/{device_id}/history/ppp/active:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1ppp~1active'
+  /devices/{device_id}/history/queues:
+    $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1queues'
+
+  /devices/{device_id}/reports/selling:
+    $ref: './paths/reports.yaml#/~1devices~1{device_id}~1reports~1selling'
+  /devices/{device_id}/reports/selling/today:
+    $ref: './paths/reports.yaml#/~1devices~1{device_id}~1reports~1selling~1today'
+  /devices/{device_id}/reports/selling/summary:
+    $ref: './paths/reports.yaml#/~1devices~1{device_id}~1reports~1selling~1summary'
+  /devices/{device_id}/reports/selling.csv:
+    $ref: './paths/reports.yaml#/~1devices~1{device_id}~1reports~1selling.csv'
+
+components:
+  schemas:
+    # Envelope & common
+    Envelope:            { $ref: './schemas/envelope.yaml#/Envelope' }
+    ErrorEnvelope:       { $ref: './schemas/envelope.yaml#/ErrorEnvelope' }
+    ErrorPayload:        { $ref: './schemas/envelope.yaml#/ErrorPayload' }
+    CountResponse:       { $ref: './schemas/envelope.yaml#/CountResponse' }
+    IDResponse:          { $ref: './schemas/envelope.yaml#/IDResponse' }
+    ActionResponse:      { $ref: './schemas/envelope.yaml#/ActionResponse' }
+    BulkResult:          { $ref: './schemas/envelope.yaml#/BulkResult' }
+
+    # Health
+    HealthStatus:        { $ref: './schemas/health.yaml#/HealthStatus' }
+    DeviceHealthStat:    { $ref: './schemas/health.yaml#/DeviceHealthStat' }
+
+    # Device
+    DeviceResponse:           { $ref: './schemas/device.yaml#/DeviceResponse' }
+    DeviceCreateRequest:      { $ref: './schemas/device.yaml#/DeviceCreateRequest' }
+    DeviceUpdateRequest:      { $ref: './schemas/device.yaml#/DeviceUpdateRequest' }
+    DeviceWriteResponse:      { $ref: './schemas/device.yaml#/DeviceWriteResponse' }
+
+    # System
+    SystemIdentityResponse:    { $ref: './schemas/system.yaml#/SystemIdentityResponse' }
+    SystemResourceResponse:    { $ref: './schemas/system.yaml#/SystemResourceResponse' }
+    SystemRouterboardResponse: { $ref: './schemas/system.yaml#/SystemRouterboardResponse' }
+    SystemClockResponse:       { $ref: './schemas/system.yaml#/SystemClockResponse' }
+    ScriptResponse:            { $ref: './schemas/system.yaml#/ScriptResponse' }
+    ScriptCreateRequest:       { $ref: './schemas/system.yaml#/ScriptCreateRequest' }
+    ScriptUpdateRequest:       { $ref: './schemas/system.yaml#/ScriptUpdateRequest' }
+    SchedulerResponse:         { $ref: './schemas/system.yaml#/SchedulerResponse' }
+    SchedulerCreateRequest:    { $ref: './schemas/system.yaml#/SchedulerCreateRequest' }
+    SchedulerUpdateRequest:    { $ref: './schemas/system.yaml#/SchedulerUpdateRequest' }
+    LoggingAddHotspotDiskRequest: { $ref: './schemas/system.yaml#/LoggingAddHotspotDiskRequest' }
+
+    # Hotspot
+    HotspotUserResponse:       { $ref: './schemas/hotspot.yaml#/HotspotUserResponse' }
+    HotspotUserCreateRequest:  { $ref: './schemas/hotspot.yaml#/HotspotUserCreateRequest' }
+    HotspotUserUpdateRequest:  { $ref: './schemas/hotspot.yaml#/HotspotUserUpdateRequest' }
+    HotspotProfileResponse:    { $ref: './schemas/hotspot.yaml#/HotspotProfileResponse' }
+    HotspotProfileCreateRequest: { $ref: './schemas/hotspot.yaml#/HotspotProfileCreateRequest' }
+    HotspotProfileUpdateRequest: { $ref: './schemas/hotspot.yaml#/HotspotProfileUpdateRequest' }
+    HotspotProfileDeleteRequest: { $ref: './schemas/hotspot.yaml#/HotspotProfileDeleteRequest' }
+    HotspotActiveResponse:     { $ref: './schemas/hotspot.yaml#/HotspotActiveResponse' }
+    HotspotBindingResponse:    { $ref: './schemas/hotspot.yaml#/HotspotBindingResponse' }
+    HotspotHostResponse:       { $ref: './schemas/hotspot.yaml#/HotspotHostResponse' }
+    HotspotCookieResponse:     { $ref: './schemas/hotspot.yaml#/HotspotCookieResponse' }
+    HotspotServerResponse:     { $ref: './schemas/hotspot.yaml#/HotspotServerResponse' }
+    SetBoolRequest:            { $ref: './schemas/hotspot.yaml#/SetBoolRequest' }
+    SetStringRequest:          { $ref: './schemas/hotspot.yaml#/SetStringRequest' }
+    BulkIDsRequest:            { $ref: './schemas/hotspot.yaml#/BulkIDsRequest' }
+    SetBindingTypeRequest:     { $ref: './schemas/hotspot.yaml#/SetBindingTypeRequest' }
+
+    # Voucher
+    VoucherGenerateRequest:    { $ref: './schemas/voucher.yaml#/VoucherGenerateRequest' }
+    VoucherResponse:           { $ref: './schemas/voucher.yaml#/VoucherResponse' }
+    VoucherGenerateResponse:   { $ref: './schemas/voucher.yaml#/VoucherGenerateResponse' }
+
+    # Network
+    InterfaceResponse:         { $ref: './schemas/network.yaml#/InterfaceResponse' }
+    QueueSimpleResponse:       { $ref: './schemas/network.yaml#/QueueSimpleResponse' }
+    IPPoolResponse:            { $ref: './schemas/network.yaml#/IPPoolResponse' }
+    ARPEntryResponse:          { $ref: './schemas/network.yaml#/ARPEntryResponse' }
+    DHCPLeaseResponse:         { $ref: './schemas/network.yaml#/DHCPLeaseResponse' }
+    TrafficResponse:           { $ref: './schemas/network.yaml#/TrafficResponse' }
+
+    # PPP
+    PPPSecretResponse:         { $ref: './schemas/ppp.yaml#/PPPSecretResponse' }
+    PPPSecretCreateRequest:    { $ref: './schemas/ppp.yaml#/PPPSecretCreateRequest' }
+    PPPSecretUpdateRequest:    { $ref: './schemas/ppp.yaml#/PPPSecretUpdateRequest' }
+    PPPProfileResponse:        { $ref: './schemas/ppp.yaml#/PPPProfileResponse' }
+    PPPProfileCreateRequest:   { $ref: './schemas/ppp.yaml#/PPPProfileCreateRequest' }
+    PPPProfileUpdateRequest:   { $ref: './schemas/ppp.yaml#/PPPProfileUpdateRequest' }
+    PPPActiveResponse:         { $ref: './schemas/ppp.yaml#/PPPActiveResponse' }
+
+    # Stream events
+    HotspotActiveEvent:        { $ref: './schemas/stream-events.yaml#/HotspotActiveEvent' }
+    PPPActiveEvent:            { $ref: './schemas/stream-events.yaml#/PPPActiveEvent' }
+    LogEvent:                  { $ref: './schemas/stream-events.yaml#/LogEvent' }
+    InterfaceStatsEvent:       { $ref: './schemas/stream-events.yaml#/InterfaceStatsEvent' }
+    QueueStatsEvent:           { $ref: './schemas/stream-events.yaml#/QueueStatsEvent' }
+
+    # Log
+    LogEntryResponse:          { $ref: './schemas/log.yaml#/LogEntryResponse' }
+
+    # History
+    HistoryRow:                { $ref: './schemas/history.yaml#/HistoryRow' }
+
+    # Report
+    TransactionResponse:       { $ref: './schemas/report.yaml#/TransactionResponse' }
+    ReportSummary:             { $ref: './schemas/report.yaml#/ReportSummary' }
+    ReportTodayResponse:       { $ref: './schemas/report.yaml#/ReportTodayResponse' }
+
+  parameters:
+    DeviceIdPath:      { $ref: './components/parameters.yaml#/DeviceIdPath' }
+    IdPath:            { $ref: './components/parameters.yaml#/IdPath' }
+    NamePath:          { $ref: './components/parameters.yaml#/NamePath' }
+    PrefixPath:        { $ref: './components/parameters.yaml#/PrefixPath' }
+    CacheQuery:        { $ref: './components/parameters.yaml#/CacheQuery' }
+    TtlQuery:          { $ref: './components/parameters.yaml#/TtlQuery' }
+    FromQuery:         { $ref: './components/parameters.yaml#/FromQuery' }
+    ToQuery:           { $ref: './components/parameters.yaml#/ToQuery' }
+    IntervalQuery:     { $ref: './components/parameters.yaml#/IntervalQuery' }
+    MonthQuery:        { $ref: './components/parameters.yaml#/MonthQuery' }
+    DateQuery:         { $ref: './components/parameters.yaml#/DateQuery' }
+    MacQuery:          { $ref: './components/parameters.yaml#/MacQuery' }
+    ServerQuery:       { $ref: './components/parameters.yaml#/ServerQuery' }
+    ProfileQuery:      { $ref: './components/parameters.yaml#/ProfileQuery' }
+    CommentQuery:      { $ref: './components/parameters.yaml#/CommentQuery' }
+    UserQuery:         { $ref: './components/parameters.yaml#/UserQuery' }
+    TopicsQuery:       { $ref: './components/parameters.yaml#/TopicsQuery' }
+    ModeQuery:         { $ref: './components/parameters.yaml#/ModeQuery' }
+    IncludeTransactionsQuery: { $ref: './components/parameters.yaml#/IncludeTransactionsQuery' }
+    NameQuery:         { $ref: './components/parameters.yaml#/NameQuery' }
+    DynamicQuery:      { $ref: './components/parameters.yaml#/DynamicQuery' }
+    SourceQuery:       { $ref: './components/parameters.yaml#/SourceQuery' }
+    OwnerQuery:        { $ref: './components/parameters.yaml#/OwnerQuery' }
+
+  responses:
+    ErrorBadRequest:           { $ref: './components/responses.yaml#/ErrorBadRequest' }
+    ErrorValidation:           { $ref: './components/responses.yaml#/ErrorValidation' }
+    ErrorNotFound:             { $ref: './components/responses.yaml#/ErrorNotFound' }
+    ErrorDeviceNotFound:       { $ref: './components/responses.yaml#/ErrorDeviceNotFound' }
+    ErrorConflict:             { $ref: './components/responses.yaml#/ErrorConflict' }
+    ErrorTimeout:              { $ref: './components/responses.yaml#/ErrorTimeout' }
+    ErrorInternal:             { $ref: './components/responses.yaml#/ErrorInternal' }
+    ErrorServiceUnavailable:   { $ref: './components/responses.yaml#/ErrorServiceUnavailable' }
+    NoContentResponse:         { $ref: './components/responses.yaml#/NoContentResponse' }

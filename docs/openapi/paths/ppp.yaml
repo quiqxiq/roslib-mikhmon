@@ -1,0 +1,252 @@
+/devices/{device_id}/ppp/secrets:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [PPP]
+    summary: List PPP secrets
+    responses:
+      '200':
+        description: Secret list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/ppp.yaml#/PPPSecretResponse' }
+  post:
+    tags: [PPP]
+    summary: Create PPP secret
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/ppp.yaml#/PPPSecretCreateRequest' }
+          examples:
+            pppoe_user:
+              summary: PPPoE user
+              value:
+                name: "pppoe-user01"
+                password: "p4ssw0rd"
+                service: "pppoe"
+                profile: "default"
+                remote_address: "10.0.0.10"
+                comment: "customer A"
+    responses:
+      '201':
+        description: Secret created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/ppp/secrets/by-name/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NamePath'
+  get:
+    tags: [PPP]
+    summary: Get PPP secret by name
+    responses:
+      '200':
+        description: Secret detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/ppp.yaml#/PPPSecretResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/ppp/secrets/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [PPP]
+    summary: Get PPP secret by ID
+    responses:
+      '200':
+        description: Secret detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/ppp.yaml#/PPPSecretResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  put:
+    tags: [PPP]
+    summary: Update PPP secret
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/ppp.yaml#/PPPSecretUpdateRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [PPP]
+    summary: Delete PPP secret
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/ppp/secrets/{id}/disabled:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  patch:
+    tags: [PPP]
+    summary: Toggle PPP secret disabled
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/SetBoolRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/ppp/profiles:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [PPP]
+    summary: List PPP profiles
+    responses:
+      '200':
+        description: Profile list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/ppp.yaml#/PPPProfileResponse' }
+  post:
+    tags: [PPP]
+    summary: Create PPP profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/ppp.yaml#/PPPProfileCreateRequest' }
+    responses:
+      '201':
+        description: Profile created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/ppp/profiles/by-name/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NamePath'
+  get:
+    tags: [PPP]
+    summary: Get PPP profile by name
+    responses:
+      '200':
+        description: Profile detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/ppp.yaml#/PPPProfileResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/ppp/profiles/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [PPP]
+    summary: Get PPP profile by ID
+    responses:
+      '200':
+        description: Profile detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/ppp.yaml#/PPPProfileResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  put:
+    tags: [PPP]
+    summary: Update PPP profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/ppp.yaml#/PPPProfileUpdateRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [PPP]
+    summary: Delete PPP profile
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/ppp/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [PPP]
+    summary: List active PPP sessions
+    responses:
+      '200':
+        description: Active session list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/ppp.yaml#/PPPActiveResponse' }
+
+/devices/{device_id}/ppp/active/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [PPP]
+    summary: Disconnect PPP session
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

@@ -1,0 +1,137 @@
+SystemIdentityResponse:
+  type: object
+  required: [name]
+  properties:
+    name:
+      type: string
+      description: Identitas router (`/system/identity`).
+      example: "MikroTik"
+
+SystemResourceResponse:
+  type: object
+  description: Snapshot resource router (CPU, memori, HDD) dari `/system/resource`.
+  required: [cpu_load, free_memory, total_memory, free_hdd_space, total_hdd_space]
+  properties:
+    uptime:           { type: string,  example: "5d12h34m" }
+    version:          { type: string,  example: "7.13.5 (stable)" }
+    build_time:       { type: string,  example: "Dec/05/2024 10:30:21" }
+    factory_software: { type: string,  example: "6.45.9" }
+    board_name:       { type: string,  example: "RB951G-2HnD" }
+    platform:         { type: string,  example: "MikroTik" }
+    cpu:              { type: string,  example: "ARM" }
+    cpu_count:        { type: integer, example: 1 }
+    cpu_frequency:    { type: integer, format: int64, example: 600 }
+    cpu_load:         { type: integer, example: 12, description: "Persen 0..100" }
+    free_memory:      { type: integer, format: int64, example: 67108864, description: "Byte" }
+    total_memory:     { type: integer, format: int64, example: 134217728 }
+    free_hdd_space:   { type: integer, format: int64, example: 100663296 }
+    total_hdd_space:  { type: integer, format: int64, example: 134217728 }
+    architecture_name: { type: string, example: "arm" }
+    write_sect_since_reboot: { type: integer, format: int64 }
+    bad_blocks:       { type: string,  example: "0%" }
+
+SystemRouterboardResponse:
+  type: object
+  required: [routerboard]
+  properties:
+    routerboard:      { type: boolean, example: true }
+    model:            { type: string, example: "951G-2HnD" }
+    board_name:       { type: string, example: "RB951G-2HnD" }
+    serial_number:    { type: string, example: "1234567890AB" }
+    firmware_type:    { type: string, example: "ar9344" }
+    factory_firmware: { type: string, example: "3.41" }
+    current_firmware: { type: string, example: "7.13" }
+    upgrade_firmware: { type: string, example: "7.13" }
+
+SystemClockResponse:
+  type: object
+  required: [time_zone_autodetect, dst_active]
+  properties:
+    time:                 { type: string, example: "10:30:21" }
+    date:                 { type: string, example: "may/19/2026" }
+    time_zone_name:       { type: string, example: "Asia/Jakarta" }
+    gmt_offset:           { type: string, example: "+07:00" }
+    time_zone_autodetect: { type: boolean }
+    dst_active:           { type: boolean }
+
+ScriptResponse:
+  type: object
+  required: [id, name, run_count, dont_require_permissions]
+  properties:
+    id:       { type: string, example: "*1" }
+    name:     { type: string, example: "on-login-user01" }
+    owner:    { type: string, example: "admin" }
+    source:   { type: string, example: "/log info \"hello\";" }
+    comment:  { type: string }
+    policy:   { type: string, example: "read,write,policy,test" }
+    run_count: { type: integer, example: 3 }
+    last_started: { type: string, example: "may/19/2026 10:00:00" }
+    dont_require_permissions: { type: boolean }
+
+ScriptCreateRequest:
+  type: object
+  required: [name, source]
+  properties:
+    name:    { type: string, minLength: 1, maxLength: 128, example: "on-login-user01" }
+    source:  { type: string, minLength: 1, example: "/log info \"login user01\";" }
+    comment: { type: string }
+    owner:   { type: string, example: "admin" }
+    policy:  { type: string, example: "read,write,policy,test" }
+
+ScriptUpdateRequest:
+  type: object
+  description: Sparse update — kosong = tidak di-ubah.
+  properties:
+    name:    { type: string }
+    source:  { type: string }
+    comment: { type: string }
+    owner:   { type: string }
+
+SchedulerResponse:
+  type: object
+  required: [id, name, disabled, run_count]
+  properties:
+    id:         { type: string, example: "*1" }
+    name:       { type: string, example: "expiry-check-daily" }
+    start_date: { type: string, example: "may/19/2026" }
+    start_time: { type: string, example: "00:00:00" }
+    interval:   { type: string, example: "1d" }
+    on_event:   { type: string, example: "/system/script run [find name=cleanup]" }
+    next_run:   { type: string, example: "may/20/2026 00:00:00" }
+    policy:     { type: string, example: "read,write,policy,test" }
+    disabled:   { type: boolean }
+    comment:    { type: string }
+    run_count:  { type: integer }
+
+SchedulerCreateRequest:
+  type: object
+  required: [name]
+  properties:
+    name:       { type: string, minLength: 1, maxLength: 128, example: "expiry-check-daily" }
+    on_event:   { type: string, example: "/system/script run [find name=cleanup]" }
+    start_date: { type: string, example: "may/19/2026" }
+    start_time: { type: string, example: "00:00:00" }
+    interval:   { type: string, example: "1d" }
+    disabled:   { type: boolean, nullable: true }
+    comment:    { type: string }
+
+SchedulerUpdateRequest:
+  type: object
+  description: Sparse update.
+  properties:
+    name:     { type: string }
+    on_event: { type: string }
+    interval: { type: string }
+    disabled: { type: boolean, nullable: true }
+    comment:  { type: string }
+
+LoggingAddHotspotDiskRequest:
+  type: object
+  description: |
+    Body opsional untuk POST /system/logging/hotspot-disk. Kalau body kosong,
+    prefix default `->` digunakan.
+  properties:
+    prefix:
+      type: string
+      example: "->"
+      description: Prefix untuk log entry yang di-write ke disk.

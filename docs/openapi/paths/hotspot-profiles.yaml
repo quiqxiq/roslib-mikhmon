@@ -1,0 +1,118 @@
+/devices/{device_id}/hotspot/profiles:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/CacheQuery'
+    - $ref: '../components/parameters.yaml#/TtlQuery'
+  get:
+    tags: [Hotspot Profiles]
+    summary: List profiles
+    description: List `/ip/hotspot/user/profile`. Cache opsional.
+    responses:
+      '200':
+        description: Profile list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/hotspot.yaml#/HotspotProfileResponse' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+  post:
+    tags: [Hotspot Profiles]
+    summary: Create profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/HotspotProfileCreateRequest' }
+          examples:
+            vip_2m:
+              summary: Profile VIP 2M/2M
+              value:
+                name: "vip-2m"
+                address_pool: "hs-pool"
+                rate_limit: "2M/2M"
+                shared_users: 1
+                on_login: ":log info \"login $user from $address\";"
+    responses:
+      '201':
+        description: Profile created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/hotspot/profiles/by-name/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NamePath'
+  get:
+    tags: [Hotspot Profiles]
+    summary: Get profile by name
+    responses:
+      '200':
+        description: Profile detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotProfileResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/hotspot/profiles/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [Hotspot Profiles]
+    summary: Get profile by ID
+    responses:
+      '200':
+        description: Profile detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/hotspot.yaml#/HotspotProfileResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  put:
+    tags: [Hotspot Profiles]
+    summary: Update profile
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/HotspotProfileUpdateRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [Hotspot Profiles]
+    summary: Delete profile (cascade)
+    description: |
+      Hapus profile. Kalau body `{name: ...}` di-set, workflow akan cleanup
+      scheduler/script yang nama-nya match (cascade delete).
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema: { $ref: '../schemas/hotspot.yaml#/HotspotProfileDeleteRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

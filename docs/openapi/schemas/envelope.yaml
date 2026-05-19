@@ -1,0 +1,103 @@
+# Envelope dasar (api/dto/envelope.go). Semua endpoint mengembalikan
+# bentuk ini — kalau success isi `data` (+ optional `meta`), kalau fail
+# isi `error`.
+
+Envelope:
+  type: object
+  description: Response envelope generik. Field `data` dan `error` saling eksklusif.
+  properties:
+    data:
+      description: Payload sukses. Tipe spesifik tergantung endpoint.
+    meta:
+      type: object
+      additionalProperties: true
+      description: Metadata opsional, biasanya berisi `count` untuk list.
+      example: { count: 47 }
+    error:
+      $ref: '#/ErrorPayload'
+
+ErrorEnvelope:
+  type: object
+  description: Envelope untuk response error (status 4xx/5xx).
+  required: [error]
+  properties:
+    error:
+      $ref: '#/ErrorPayload'
+
+ErrorPayload:
+  type: object
+  description: Detail error yang stabil — frontend bisa branch via `code`.
+  required: [code, message]
+  properties:
+    code:
+      type: string
+      description: Stable error code untuk branching di client.
+      enum:
+        - NOT_FOUND
+        - INVALID_ARGUMENT
+        - AMBIGUOUS
+        - VALIDATION
+        - TIMEOUT
+        - CANCELED
+        - INTERNAL
+        - DEVICE_NOT_FOUND
+        - SERVICE_UNAVAILABLE
+    message:
+      type: string
+      description: Pesan error human-readable.
+      example: "user with id *99 not found"
+    path:
+      type: string
+      description: Path request yang menghasilkan error.
+      example: "/api/v1/devices/rb-main/hotspot/users/*99"
+    details:
+      description: Payload tambahan (mis. validator detail). Tipe bebas.
+
+CountResponse:
+  type: object
+  description: Body untuk endpoint count-only.
+  required: [count]
+  properties:
+    count:
+      type: integer
+      format: int64
+      minimum: 0
+      example: 142
+
+IDResponse:
+  type: object
+  description: Body untuk endpoint create yang hanya kembalikan `.id`.
+  required: [id]
+  properties:
+    id:
+      type: string
+      description: RouterOS internal ID (`.id`).
+      example: "*5"
+
+ActionResponse:
+  type: object
+  description: Body untuk endpoint control (mis. reboot, shutdown).
+  required: [action, status]
+  properties:
+    action:
+      type: string
+      example: "reboot"
+    status:
+      type: string
+      example: "issued"
+
+BulkResult:
+  type: object
+  description: Hasil operasi bulk — berhasil dan gagal di-list eksplisit.
+  required: [succeeded, failed]
+  properties:
+    succeeded:
+      type: array
+      items: { type: string }
+      description: List ID yang berhasil di-proses.
+      example: ["*1", "*2", "*3"]
+    failed:
+      type: object
+      additionalProperties: { type: string }
+      description: Map dari ID ke pesan error per item.
+      example: { "*4": "mikrotik: not found", "*5": "operation timed out" }

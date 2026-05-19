@@ -1,0 +1,72 @@
+TransactionResponse:
+  type: object
+  description: |
+    Satu row transaksi penjualan voucher (dicatat oleh expiry service mode
+    `remc`/`ntfc` saat voucher di-expire). Format `sale_date`/`sale_month`
+    mengikuti konvensi mikhmonv3 (lowercase month).
+  required: [id, sale_date, sale_time, sale_month, username, price, sell_price, created_at]
+  properties:
+    id:         { type: integer, format: int64, example: 142 }
+    sale_date:  { type: string, example: "jan/05/2026" }
+    sale_time:  { type: string, example: "10:30:21" }
+    sale_month: { type: string, example: "jan2026" }
+    username:   { type: string, example: "vc-a1b2c3d4" }
+    price:      { type: integer, example: 10000 }
+    sell_price: { type: integer, example: 12000 }
+    ip:         { type: string, example: "10.0.0.5" }
+    mac:        { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    validity:   { type: string, example: "168h" }
+    profile:    { type: string, example: "default" }
+    comment:    { type: string, example: "expiry-auto" }
+    created_at:
+      type: string
+      format: date-time
+      example: "2026-01-05T10:30:21+07:00"
+
+ReportSummary:
+  type: object
+  required: [count, total_price, total_sell_price, profit]
+  properties:
+    count:
+      type: integer
+      example: 142
+    total_price:
+      type: integer
+      description: Total cost (`price` × count).
+      example: 1420000
+    total_sell_price:
+      type: integer
+      description: Total revenue (`sell_price` × count).
+      example: 1704000
+    profit:
+      type: integer
+      description: total_sell_price − total_price.
+      example: 284000
+    by_profile:
+      type: object
+      additionalProperties: { type: integer }
+      description: Count per profile name.
+      example: { default: 100, vip: 42 }
+    by_sell_price:
+      type: object
+      additionalProperties: { type: integer }
+      description: Count per sell-price bucket (key = harga sebagai string).
+      example: { "10000": 100, "20000": 42 }
+    transactions:
+      type: array
+      items: { $ref: '#/TransactionResponse' }
+      description: Detail tiap transaksi. Hanya di-isi kalau query `?include_transactions=true`.
+
+ReportTodayResponse:
+  type: object
+  required: [date, count, transactions]
+  properties:
+    date:
+      type: string
+      example: "may/19/2026"
+    count:
+      type: integer
+      example: 5
+    transactions:
+      type: array
+      items: { $ref: '#/TransactionResponse' }

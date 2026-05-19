@@ -1,0 +1,107 @@
+/devices/{device_id}/reports/selling:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/MonthQuery'
+  get:
+    tags: [Reports]
+    summary: List transaksi penjualan voucher
+    description: |
+      Query database lokal (Postgres). Tetap berfungsi meskipun router
+      offline. Filter `?month=jan2026` (format mikhmon lowercase).
+    responses:
+      '200':
+        description: List transaksi
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/report.yaml#/TransactionResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorBadRequest' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/reports/selling/today:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Reports]
+    summary: Transaksi hari ini
+    description: Filter otomatis ke tanggal sekarang server (timezone server).
+    responses:
+      '200':
+        description: Transaksi hari ini
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/report.yaml#/ReportTodayResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/reports/selling/summary:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/MonthQuery'
+    - $ref: '../components/parameters.yaml#/IncludeTransactionsQuery'
+  get:
+    tags: [Reports]
+    summary: Agregat penjualan bulanan
+    description: |
+      Hitung total count, total cost, total revenue, profit, dan breakdown
+      per profile / per sell-price. Default current month.
+
+      Set `?include_transactions=true` untuk include detail tiap transaksi
+      di response (berat — pakai untuk export/audit).
+    responses:
+      '200':
+        description: Summary
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/report.yaml#/ReportSummary' }
+            examples:
+              summary_only:
+                summary: Tanpa detail transaksi
+                value:
+                  data:
+                    count: 142
+                    total_price: 1420000
+                    total_sell_price: 1704000
+                    profit: 284000
+                    by_profile: { default: 100, vip: 42 }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/reports/selling.csv:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/MonthQuery'
+    - $ref: '../components/parameters.yaml#/DateQuery'
+  get:
+    tags: [Reports]
+    summary: Export transaksi sebagai CSV
+    description: |
+      Download CSV file. Header: `sale_date, sale_time, username, profile,
+      price, sell_price, validity, mac, ip, comment`. Filter `?month=` atau
+      `?date=`.
+    responses:
+      '200':
+        description: CSV download
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+              example: |
+                sale_date,sale_time,username,profile,price,sell_price,validity,mac,ip,comment
+                jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,expiry-auto
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

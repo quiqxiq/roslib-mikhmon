@@ -1,0 +1,163 @@
+/devices/{device_id}/stream/hotspot/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ModeQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream hotspot active sessions (SSE)
+    description: |
+      Server-Sent Events stream untuk session hotspot.
+
+      **Format event**:
+      ```
+      event: change
+      id: <event-id>
+      data: <HotspotActiveEvent JSON>
+
+      ```
+
+      **Default mode**: snapshot+follow. Subscribe akan kirim snapshot row
+      yang aktif sekarang, lalu follow delta. Pakai `?mode=follow-only`
+      untuk skip snapshot.
+
+      Broker auto-stop saat last subscriber leave; multi-subscriber per
+      topic share single backend stream ke router.
+
+      **Sentinel field**: `dead: true` artinya session terminate.
+      ID-nya tetap valid untuk cross-ref snapshot.
+    x-event-types: [change]
+    responses:
+      '200':
+        description: SSE stream (Content-Type text/event-stream)
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/HotspotActiveEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/ppp/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Streaming]
+    summary: Stream PPP active sessions (SSE)
+    description: |
+      SSE delta sesi PPP. Format identik dengan hotspot active:
+      `event: change` + `data: <PPPActiveEvent JSON>`. Sentinel
+      `dead: true` saat session terminate.
+    x-event-types: [change]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/PPPActiveEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/log:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/TopicsQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream syslog (SSE)
+    description: |
+      Stream `/log/print follow`. Filter topik via `?topics=hotspot,info`
+      (comma-separated). Tanpa filter = topic `all`.
+
+      **Format**:
+      ```
+      event: log
+      id: <event-id>
+      data: <LogEvent JSON>
+
+      ```
+    x-event-types: [log]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/LogEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/system/resource:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream resource snapshot (SSE polling)
+    description: |
+      Polling `/system/resource` per `?interval=` (default `2s`). Event
+      `resource` dengan payload `SystemResourceResponse` lengkap.
+    x-event-types: [resource]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/system.yaml#/SystemResourceResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/network/interfaces/{name}/traffic:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - name: name
+      in: path
+      required: true
+      description: Nama interface (mis. `ether1`, `wlan1`).
+      schema: { type: string, example: "ether1" }
+  get:
+    tags: [Streaming]
+    summary: Stream interface traffic (SSE inherent)
+    description: |
+      Inherent stream `/interface/monitor-traffic interface=<name>`.
+      Update natural per detik dari RouterOS. Event `traffic` dengan
+      payload bit/packet per detik.
+    x-event-types: [traffic]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/network.yaml#/TrafficResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/network/interfaces/stats:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream interface stats (SSE polling)
+    description: |
+      Polling `/interface/print stats` per `?interval=` (default `2s`).
+      Event `stats` dengan counter byte/packet kumulatif sejak boot —
+      frontend hitung delta untuk plot rate.
+    x-event-types: [stats]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/InterfaceStatsEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/network/queues/stats:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream queue stats (SSE polling)
+    description: |
+      Polling `/queue/simple/print stats` per `?interval=` (default `1s`).
+      Field `bytes`/`packets` format RouterOS `"in/out"`.
+    x-event-types: [stats]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/QueueStatsEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }

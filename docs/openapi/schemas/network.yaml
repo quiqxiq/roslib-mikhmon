@@ -1,0 +1,93 @@
+InterfaceResponse:
+  type: object
+  required: [id, name, running, disabled]
+  properties:
+    id:                   { type: string, example: "*1" }
+    name:                 { type: string, example: "ether1" }
+    default_name:         { type: string, example: "ether1" }
+    type:                 { type: string, example: "ether" }
+    mtu:                  { type: string, example: "1500" }
+    actual_mtu:           { type: integer, format: int64, example: 1500 }
+    mac_address:          { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    last_link_up_time:    { type: string }
+    last_link_down_time:  { type: string }
+    link_downs:           { type: integer, format: int64 }
+    running:              { type: boolean }
+    disabled:             { type: boolean }
+    comment:              { type: string }
+
+QueueSimpleResponse:
+  type: object
+  description: Queue di `/queue/simple`.
+  required: [id, name, disabled, dynamic]
+  properties:
+    id:          { type: string, example: "*1" }
+    name:        { type: string, example: "<hotspot-user01>" }
+    target:      { type: string, example: "10.0.0.5/32" }
+    max_limit:   { type: string, example: "2M/2M" }
+    limit_at:    { type: string }
+    burst_limit: { type: string }
+    parent:      { type: string }
+    priority:    { type: string }
+    bucket_size: { type: string }
+    packet_marks: { type: string }
+    queue:       { type: string }
+    disabled:    { type: boolean }
+    dynamic:     { type: boolean, description: "true = auto-generated oleh hotspot/PPP" }
+    comment:     { type: string }
+    bytes:       { type: string, example: "1234/5678", description: "Format RouterOS upload/download" }
+    packets:     { type: string }
+    rate:        { type: string, example: "0/0" }
+
+IPPoolResponse:
+  type: object
+  required: [id, name]
+  properties:
+    id:        { type: string, example: "*1" }
+    name:      { type: string, example: "hs-pool" }
+    ranges:    { type: string, example: "10.0.0.10-10.0.0.250" }
+    next_pool: { type: string }
+    comment:   { type: string }
+
+ARPEntryResponse:
+  type: object
+  required: [id, dynamic, disabled, complete, published, invalid]
+  properties:
+    id:          { type: string }
+    address:     { type: string, example: "10.0.0.5" }
+    mac_address: { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    interface:   { type: string, example: "ether2" }
+    dynamic:     { type: boolean }
+    disabled:    { type: boolean }
+    complete:    { type: boolean }
+    published:   { type: boolean }
+    invalid:     { type: boolean }
+    comment:     { type: string }
+
+DHCPLeaseResponse:
+  type: object
+  required: [id, dynamic, disabled]
+  properties:
+    id:            { type: string }
+    address:       { type: string, example: "10.0.0.5" }
+    mac_address:   { type: string }
+    client_id:     { type: string }
+    host_name:     { type: string }
+    server:        { type: string, example: "dhcp1" }
+    status:        { type: string, example: "bound" }
+    expires_after: { type: string, example: "23h" }
+    last_seen:     { type: string }
+    dynamic:       { type: boolean }
+    disabled:      { type: boolean }
+    comment:       { type: string }
+
+TrafficResponse:
+  type: object
+  description: Snapshot traffic per detik (SSE payload).
+  required: [rx_bits_per_sec, tx_bits_per_sec, rx_packets_per_sec, tx_packets_per_sec]
+  properties:
+    name:                { type: string, example: "ether1" }
+    rx_bits_per_sec:     { type: integer, format: int64 }
+    tx_bits_per_sec:     { type: integer, format: int64 }
+    rx_packets_per_sec:  { type: integer, format: int64 }
+    tx_packets_per_sec:  { type: integer, format: int64 }

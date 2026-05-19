@@ -1,0 +1,167 @@
+/devices/{device_id}/network/interfaces:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Network]
+    summary: List interfaces
+    responses:
+      '200':
+        description: Interface list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/network.yaml#/InterfaceResponse' }
+
+/devices/{device_id}/network/pools:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/CacheQuery'
+    - $ref: '../components/parameters.yaml#/TtlQuery'
+  get:
+    tags: [Network]
+    summary: List IP pools
+    responses:
+      '200':
+        description: Pool list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/network.yaml#/IPPoolResponse' }
+
+/devices/{device_id}/network/arp:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - name: mac
+      in: query
+      required: true
+      description: MAC address (WAJIB untuk endpoint ini).
+      schema:
+        type: string
+        pattern: "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+        example: "AA:BB:CC:DD:EE:FF"
+  get:
+    tags: [Network]
+    summary: List ARP entries by MAC
+    description: Filter ARP entry berdasarkan MAC address. Query `mac` WAJIB.
+    responses:
+      '200':
+        description: ARP entries
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/network.yaml#/ARPEntryResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorBadRequest' }
+
+/devices/{device_id}/network/arp/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [Network]
+    summary: Delete ARP entry
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/network/dhcp-leases:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/MacQuery'
+  get:
+    tags: [Network]
+    summary: List DHCP leases
+    description: Filter `?mac=`.
+    responses:
+      '200':
+        description: Lease list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/network.yaml#/DHCPLeaseResponse' }
+
+/devices/{device_id}/network/dhcp-leases/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Network]
+    summary: Count DHCP leases
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/network/dhcp-leases/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [Network]
+    summary: Delete DHCP lease
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/network/queues:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NameQuery'
+    - $ref: '../components/parameters.yaml#/DynamicQuery'
+  get:
+    tags: [Network]
+    summary: List simple queues
+    description: List `/queue/simple`. Filter `?name=` (exact) atau `?dynamic=false` (hanya manual).
+    responses:
+      '200':
+        description: Queue list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/network.yaml#/QueueSimpleResponse' }
+
+/devices/{device_id}/network/queues/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  delete:
+    tags: [Network]
+    summary: Delete queue
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

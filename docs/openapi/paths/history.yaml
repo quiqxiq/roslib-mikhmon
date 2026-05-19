@@ -1,0 +1,152 @@
+/devices/{device_id}/history/resource:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [History]
+    summary: Query historical system resource
+    description: |
+      InfluxDB query untuk data resource (CPU/memory/HDD) historis. Kolom
+      umum di tiap row: `time, cpu_load, free_memory, free_hdd_space`.
+      Bucket interval default `1m`.
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '400': { $ref: '../components/responses.yaml#/ErrorBadRequest' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }
+
+/devices/{device_id}/history/interfaces:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [History]
+    summary: Query historical interface traffic
+    description: "Kolom: `time, interface, rx_bytes, tx_bytes, rx_pps, tx_pps`."
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '400': { $ref: '../components/responses.yaml#/ErrorBadRequest' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }
+
+/devices/{device_id}/history/hotspot/users:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [History]
+    summary: Query historical hotspot user usage
+    description: "Kolom: `time, user, profile, bytes_in_delta, bytes_out_delta`."
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }
+
+/devices/{device_id}/history/hotspot/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+  get:
+    tags: [History]
+    summary: Query historical hotspot connect/disconnect events
+    description: 'Kolom: `time, user, event ("connect"|"disconnect"), session_id, mac, address`.'
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }
+
+/devices/{device_id}/history/ppp/active:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+  get:
+    tags: [History]
+    summary: Query historical PPP connect/disconnect events
+    description: "Kolom: `time, user, event, address`."
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }
+
+/devices/{device_id}/history/queues:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/FromQuery'
+    - $ref: '../components/parameters.yaml#/ToQuery'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [History]
+    summary: Query historical queue statistics
+    description: "Kolom: `time, queue, max_limit, bytes_in_delta, bytes_out_delta`."
+    responses:
+      '200':
+        description: History rows
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/history.yaml#/HistoryRow' }
+      '503': { $ref: '../components/responses.yaml#/ErrorServiceUnavailable' }

@@ -1,0 +1,213 @@
+# Reusable parameters yang dipakai berulang oleh banyak endpoint.
+# Referensikan dari operasi via:
+#   $ref: '../components/parameters.yaml#/DeviceIdPath'
+
+DeviceIdPath:
+  name: device_id
+  in: path
+  required: true
+  description: Identifier device. Boleh numeric ID atau slug device (mis. `rb-main`).
+  schema:
+    type: string
+    example: "rb-main"
+
+IdPath:
+  name: id
+  in: path
+  required: true
+  description: RouterOS internal ID (`.id`), biasanya format `*N` (mis. `*1`, `*2A`).
+  schema:
+    type: string
+    example: "*1"
+
+NamePath:
+  name: name
+  in: path
+  required: true
+  description: Nama resource (user/profile/secret) untuk lookup by-name.
+  schema:
+    type: string
+    minLength: 1
+    maxLength: 128
+    example: "user01"
+
+PrefixPath:
+  name: prefix
+  in: path
+  required: true
+  description: Prefix topik RouterOS log, mis. `hotspot`, `info`.
+  schema:
+    type: string
+    example: "hotspot"
+
+CacheQuery:
+  name: cache
+  in: query
+  required: false
+  description: Aktifkan caching untuk endpoint GET ini. Default `false`.
+  schema:
+    type: boolean
+    default: false
+
+TtlQuery:
+  name: ttl
+  in: query
+  required: false
+  description: TTL cache dalam format Go duration (mis. `60s`, `5m`). Hanya berlaku saat `cache=true`.
+  schema:
+    type: string
+    pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+    example: "60s"
+
+FromQuery:
+  name: from
+  in: query
+  required: false
+  description: Awal range waktu (RFC3339). Default `now-1h`.
+  schema:
+    type: string
+    format: date-time
+    example: "2026-05-18T08:00:00Z"
+
+ToQuery:
+  name: to
+  in: query
+  required: false
+  description: Akhir range waktu (RFC3339). Default `now`.
+  schema:
+    type: string
+    format: date-time
+    example: "2026-05-18T09:00:00Z"
+
+IntervalQuery:
+  name: interval
+  in: query
+  required: false
+  description: Interval bucket untuk agregasi atau polling (Go duration). Default tergantung endpoint (1m–2s).
+  schema:
+    type: string
+    pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+    example: "1m"
+
+MonthQuery:
+  name: month
+  in: query
+  required: false
+  description: Filter bulan untuk laporan transaksi, format `<bln>jjjj` lowercase (mis. `jan2026`).
+  schema:
+    type: string
+    pattern: "^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[0-9]{4}$"
+    example: "jan2026"
+
+DateQuery:
+  name: date
+  in: query
+  required: false
+  description: Filter tanggal untuk laporan transaksi, format mikhmon `<bln>/dd/yyyy` lowercase (mis. `jan/05/2026`).
+  schema:
+    type: string
+    example: "jan/05/2026"
+
+MacQuery:
+  name: mac
+  in: query
+  required: false
+  description: Filter MAC address (case-insensitive). Pada `/network/arp` parameter ini WAJIB.
+  schema:
+    type: string
+    pattern: "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+    example: "AA:BB:CC:DD:EE:FF"
+
+ServerQuery:
+  name: server
+  in: query
+  required: false
+  description: Filter nama hotspot server.
+  schema:
+    type: string
+    example: "hotspot1"
+
+ProfileQuery:
+  name: profile
+  in: query
+  required: false
+  description: Filter nama profile.
+  schema:
+    type: string
+    example: "default"
+
+CommentQuery:
+  name: comment
+  in: query
+  required: false
+  description: Filter nilai field comment.
+  schema:
+    type: string
+
+UserQuery:
+  name: user
+  in: query
+  required: false
+  description: Filter berdasarkan username hotspot.
+  schema:
+    type: string
+    example: "user01"
+
+TopicsQuery:
+  name: topics
+  in: query
+  required: false
+  description: Filter syslog topic (comma-separated). Mis. `hotspot,info`.
+  schema:
+    type: string
+    example: "hotspot,info"
+
+ModeQuery:
+  name: mode
+  in: query
+  required: false
+  description: Mode streaming. `follow-only` = tanpa snapshot awal (event baru saja).
+  schema:
+    type: string
+    enum: [follow-only]
+
+IncludeTransactionsQuery:
+  name: include_transactions
+  in: query
+  required: false
+  description: Kalau `true`, response summary mencakup detail tiap transaksi.
+  schema:
+    type: boolean
+    default: false
+
+NameQuery:
+  name: name
+  in: query
+  required: false
+  description: Filter nama (exact match).
+  schema:
+    type: string
+
+DynamicQuery:
+  name: dynamic
+  in: query
+  required: false
+  description: Filter queue dinamis (RouterOS auto-generated). `false` = hanya queue manual.
+  schema:
+    type: boolean
+
+SourceQuery:
+  name: source
+  in: query
+  required: false
+  description: Filter script berdasarkan substring source code.
+  schema:
+    type: string
+
+OwnerQuery:
+  name: owner
+  in: query
+  required: false
+  description: Filter script berdasarkan owner.
+  schema:
+    type: string

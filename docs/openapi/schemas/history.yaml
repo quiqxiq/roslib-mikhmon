@@ -1,0 +1,21 @@
+HistoryRow:
+  type: object
+  description: |
+    Satu baris hasil query InfluxDB. Kolom bervariasi per endpoint:
+
+    - `/history/resource`: `time, cpu_load, free_memory, free_hdd_space`.
+    - `/history/interfaces`: `time, interface, rx_bytes, tx_bytes, rx_pps, tx_pps`.
+    - `/history/hotspot/users`: `time, user, profile, bytes_in_delta, bytes_out_delta`.
+    - `/history/hotspot/active`: `time, user, event ("connect"|"disconnect"), session_id, mac, address`.
+    - `/history/ppp/active`: `time, user, event, address`.
+    - `/history/queues`: `time, queue, max_limit, bytes_in_delta, bytes_out_delta`.
+
+    Skema dinamis (`additionalProperties: true`) supaya tidak berubah saat
+    kolom InfluxDB di-extend. Value bisa scalar (string/number/bool) atau
+    timestamp (RFC3339).
+  additionalProperties: true
+  example:
+    time: "2026-05-18T08:00:00Z"
+    cpu_load: 12
+    free_memory: 67108864
+    free_hdd_space: 100663296

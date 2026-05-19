@@ -1,0 +1,108 @@
+/devices/{device_id}/system/schedulers:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NameQuery'
+  get:
+    tags: [System Schedulers]
+    summary: List schedulers
+    description: List `/system/scheduler`. Filter `?name=` exact match.
+    responses:
+      '200':
+        description: Scheduler list
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items: { $ref: '../schemas/system.yaml#/SchedulerResponse' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
+  post:
+    tags: [System Schedulers]
+    summary: Create scheduler
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/system.yaml#/SchedulerCreateRequest' }
+          examples:
+            daily_cleanup:
+              summary: Scheduler harian
+              value:
+                name: "expiry-check-daily"
+                on_event: "/system/script run [find name=cleanup]"
+                start_time: "00:00:00"
+                interval: "1d"
+                comment: "auto-cleanup expired users"
+    responses:
+      '201':
+        description: Scheduler created
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+
+/devices/{device_id}/system/schedulers/count:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System Schedulers]
+    summary: Count schedulers
+    responses:
+      '200':
+        description: Count
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/CountResponse' }
+
+/devices/{device_id}/system/schedulers/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  get:
+    tags: [System Schedulers]
+    summary: Get scheduler by ID
+    responses:
+      '200':
+        description: Scheduler detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SchedulerResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  put:
+    tags: [System Schedulers]
+    summary: Update scheduler
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/system.yaml#/SchedulerUpdateRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [System Schedulers]
+    summary: Delete scheduler
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

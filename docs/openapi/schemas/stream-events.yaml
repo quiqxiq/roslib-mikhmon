@@ -1,0 +1,77 @@
+# Typed payload untuk 5 SSE stream. Tiap object adalah body satu event
+# `data:` di stream. Frontend parse via `JSON.parse(event.data)`.
+
+HotspotActiveEvent:
+  type: object
+  description: |
+    Event delta dari /stream/hotspot/active. Kalau `dead=true`, session
+    telah terminate; ID-nya valid untuk cross-ref ke snapshot terakhir
+    tapi field lain mungkin kosong.
+  required: [id, user, bytes_in, bytes_out, dead]
+  properties:
+    id:          { type: string, example: "*1" }
+    user:        { type: string, example: "user01" }
+    address:     { type: string, example: "10.0.0.5" }
+    mac_address: { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    server:      { type: string, example: "hotspot1" }
+    login_by:    { type: string, example: "http-pap" }
+    bytes_in:    { type: integer, format: int64 }
+    bytes_out:   { type: integer, format: int64 }
+    uptime:      { type: string, example: "12s" }
+    dead:
+      type: boolean
+      description: "true = session terminated."
+
+PPPActiveEvent:
+  type: object
+  required: [id, name, dead]
+  properties:
+    id:        { type: string, example: "*1" }
+    name:      { type: string, example: "pppoe-user01" }
+    service:   { type: string }
+    caller_id: { type: string }
+    address:   { type: string }
+    uptime:    { type: string }
+    dead:      { type: boolean, description: "true = session terminated." }
+
+LogEvent:
+  type: object
+  description: Satu entry log dari /stream/log.
+  required: [id, time, topics, message]
+  properties:
+    id:      { type: string, example: "*1234" }
+    time:    { type: string, example: "10:30:21" }
+    topics:  { type: string, example: "hotspot,info,account" }
+    message: { type: string, example: "user01 logged in" }
+
+InterfaceStatsEvent:
+  type: object
+  description: |
+    Stats interface polled per interval (default 2s) di /stream/network/interfaces/stats.
+    Counter kumulatif sejak boot; frontend hitung delta untuk plot.
+  required: [id, name, type, rx_byte, tx_byte, rx_packet, tx_packet, running, disabled]
+  properties:
+    id:       { type: string, example: "*1" }
+    name:     { type: string, example: "ether1" }
+    type:     { type: string, example: "ether" }
+    rx_byte:  { type: integer, format: int64 }
+    tx_byte:  { type: integer, format: int64 }
+    rx_packet: { type: integer, format: int64 }
+    tx_packet: { type: integer, format: int64 }
+    running:  { type: boolean }
+    disabled: { type: boolean }
+
+QueueStatsEvent:
+  type: object
+  description: |
+    Stats queue per interval (default 1s) di /stream/network/queues/stats.
+    Field `bytes`/`packets` format RouterOS `"in/out"`.
+  required: [id, name, target, bytes, packets, rate]
+  properties:
+    id:        { type: string, example: "*1" }
+    name:      { type: string, example: "<hotspot-user01>" }
+    target:    { type: string, example: "10.0.0.5/32" }
+    bytes:     { type: string, example: "1234/5678" }
+    packets:   { type: string, example: "10/15" }
+    rate:      { type: string, example: "200/300" }
+    max_limit: { type: string, example: "2M/2M" }

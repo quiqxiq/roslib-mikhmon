@@ -1,0 +1,55 @@
+/healthz:
+  get:
+    tags: [Health]
+    summary: Health probe
+    description: |
+      Cek ringan dependency: DB ping, jumlah device terhubung vs total, status
+      InfluxDB (kalau enabled), dan SSE subscriber + drop count. Status code
+      200 kalau semua dependency relevan healthy, 503 kalau ada yang fail.
+      Dipanggil oleh Kubernetes / load balancer probe.
+    responses:
+      '200':
+        description: Service healthy
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/health.yaml#/HealthStatus' }
+            examples:
+              healthy:
+                summary: Semua dependency OK
+                value:
+                  data:
+                    ok: true
+                    db: "ok"
+                    devices: { connected: 3, total: 3 }
+                    influx: "ok"
+                    sse_subscribers: { "hotspot-active:rb-main": 2 }
+      '503':
+        description: Salah satu dependency fail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/health.yaml#/HealthStatus' }
+            examples:
+              db_down:
+                summary: DB tidak bisa di-ping
+                value:
+                  data:
+                    ok: false
+                    db: "error: connection refused"
+                    devices: { connected: 0, total: 3 }
+              all_disconnected:
+                summary: Semua router offline
+                value:
+                  data:
+                    ok: false
+                    db: "ok"
+                    devices: { connected: 0, total: 3 }

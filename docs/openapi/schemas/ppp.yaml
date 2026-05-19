@@ -1,0 +1,106 @@
+PPPSecretResponse:
+  type: object
+  description: PPP secret (credential PPPoE/L2TP). Password TIDAK di-expose.
+  required: [id, name, disabled]
+  properties:
+    id:                  { type: string, example: "*1" }
+    name:                { type: string, example: "pppoe-user01" }
+    service:             { type: string, example: "pppoe" }
+    profile:             { type: string, example: "default" }
+    local_address:       { type: string, example: "10.0.0.1" }
+    remote_address:      { type: string, example: "10.0.0.10" }
+    caller_id:           { type: string }
+    routes:              { type: string }
+    ipv6_routes:         { type: string }
+    remote_ipv6_prefix:  { type: string }
+    limit_bytes_in:      { type: integer, format: int64 }
+    limit_bytes_out:     { type: integer, format: int64 }
+    last_logged_out:     { type: string }
+    last_caller_id:      { type: string }
+    disabled:            { type: boolean }
+    comment:             { type: string }
+
+PPPSecretCreateRequest:
+  type: object
+  required: [name]
+  properties:
+    name:           { type: string, minLength: 1, maxLength: 128, example: "pppoe-user01" }
+    password:       { type: string, format: password }
+    service:        { type: string, example: "pppoe" }
+    profile:        { type: string, example: "default" }
+    local_address:  { type: string }
+    remote_address: { type: string }
+    caller_id:      { type: string }
+    disabled:       { type: boolean, nullable: true }
+    comment:        { type: string }
+
+PPPSecretUpdateRequest:
+  type: object
+  description: Sparse update. Field nullable bisa di-set "" untuk kosongkan.
+  properties:
+    name:           { type: string }
+    password:       { type: string, format: password }
+    service:        { type: string }
+    profile:        { type: string }
+    local_address:  { type: string }
+    remote_address: { type: string }
+    caller_id:      { type: string, nullable: true }
+    disabled:       { type: boolean, nullable: true }
+    comment:        { type: string, nullable: true }
+
+PPPProfileResponse:
+  type: object
+  required: [id, name]
+  properties:
+    id:               { type: string, example: "*1" }
+    name:             { type: string, example: "default" }
+    local_address:    { type: string }
+    remote_address:   { type: string }
+    rate_limit:       { type: string }
+    dns_server:       { type: string }
+    bridge:           { type: string }
+    parent_queue:     { type: string }
+    idle_timeout:     { type: string }
+    session_timeout:  { type: string }
+    on_up:            { type: string }
+    on_down:          { type: string }
+    only_one:         { type: string }
+    use_compression:  { type: string }
+    use_encryption:   { type: string }
+    change_tcp_mss:   { type: string }
+    comment:          { type: string }
+
+PPPProfileCreateRequest:
+  type: object
+  required: [name]
+  properties:
+    name:           { type: string, minLength: 1, maxLength: 128, example: "vip" }
+    local_address:  { type: string }
+    remote_address: { type: string }
+    rate_limit:     { type: string, example: "10M/10M" }
+    comment:        { type: string }
+
+PPPProfileUpdateRequest:
+  type: object
+  properties:
+    name:           { type: string }
+    local_address:  { type: string }
+    remote_address: { type: string }
+    rate_limit:     { type: string }
+    comment:        { type: string, nullable: true }
+
+PPPActiveResponse:
+  type: object
+  required: [id, name]
+  properties:
+    id:               { type: string, example: "*1" }
+    name:             { type: string, example: "pppoe-user01" }
+    service:          { type: string, example: "pppoe" }
+    caller_id:        { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    address:          { type: string, example: "10.0.0.10" }
+    uptime:           { type: string, example: "1h23m" }
+    encoding:         { type: string }
+    session_id:       { type: string }
+    limit_bytes_in:   { type: integer, format: int64 }
+    limit_bytes_out:  { type: integer, format: int64 }
+    comment:          { type: string }

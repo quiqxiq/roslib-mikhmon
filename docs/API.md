@@ -6,13 +6,45 @@ REST + SSE service di atas paket `mikrotik/*` dan `workflows/`. Entry point:
 
 ## Interactive API Documentation
 
-Server menyediakan UI dokumentasi interaktif (Rapidoc) dengan fitur "Try it out":
+Server menyediakan UI dokumentasi interaktif (**Scalar**) dengan fitur "Try it out":
 
 - **UI**: `http://127.0.0.1:8080/docs`
-- **OpenAPI Spec**: `http://127.0.0.1:8080/docs/openapi.yaml`
+- **OpenAPI Spec (root)**: `http://127.0.0.1:8080/docs/openapi/openapi.yaml`
 
-Spec berbasis OpenAPI 3.0 dengan struktur modular (`docs/openapi/`). Untuk update
-endpoint baru, tambah/ubah file di `docs/openapi/schemas/` dan `docs/openapi/paths/`.
+Spec OpenAPI 3.0.3 dengan struktur **modular** di `docs/openapi/`:
+
+```
+docs/openapi/
+├── openapi.yaml             # root: info, servers, tags, paths refs, components refs
+├── paths/                   # 13 file path-item (devices, system, hotspot-*, network, ppp, stream, history, reports, health)
+├── schemas/                 # 12 file schema (envelope, device, system, hotspot, voucher, network, ppp, stream-events, log, history, report, health)
+├── components/
+│   ├── parameters.yaml      # ~20 reusable params (device_id, id, name, query filters, cache, ttl, dst.)
+│   └── responses.yaml       # ~9 reusable error responses
+└── redocly.yaml             # lint config (security-defined off — auth delegated ke reverse proxy)
+```
+
+**Coverage**: 103 operations (semua endpoint + 7 SSE stream) + ~65 schemas + 18 example payload untuk endpoint write penting.
+
+### Lint & verify
+
+```bash
+# Validate spec (0 errors expected).
+npx @redocly/cli@latest lint docs/openapi/openapi.yaml --config docs/openapi/redocly.yaml
+
+# Bundle all $ref ke single file (verifikasi resolve).
+npx @redocly/cli@latest bundle docs/openapi/openapi.yaml -o /tmp/bundled.yaml
+```
+
+### Update workflow
+
+Saat ada endpoint baru:
+
+1. Tambah schema baru di `schemas/<resource>.yaml` (kalau perlu).
+2. Daftarkan di `openapi.yaml` `components.schemas` (lewat `$ref`).
+3. Tambah path-item di `paths/<resource>.yaml`.
+4. Daftarkan path-item di `openapi.yaml` `paths:` (lewat `$ref` dengan JSON pointer encoding — `/` → `~1`).
+5. Run `redocly lint` + reload Scalar di browser.
 
 ## Response envelope
 
