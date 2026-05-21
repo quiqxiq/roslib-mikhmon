@@ -36,11 +36,17 @@ func (c *Client) ProfileByName(ctx context.Context, name string) (domain.PPPProf
 
 // ProfileAddArgs adalah parameter ProfileAdd.
 type ProfileAddArgs struct {
-	Name       string // wajib
-	LocalAddr  string
-	RemoteAddr string
-	RateLimit  string
-	Comment    string
+	Name           string // wajib
+	LocalAddr      string
+	RemoteAddr     string
+	RateLimit      string // format "rx/tx" mis. "10M/10M"
+	SessionTimeout string // RouterOS duration (mis. "1h30m")
+	IdleTimeout    string
+	ParentQueue    string
+	OnUp           string // script on-up; optional
+	OnDown         string // script on-down; optional
+	Disabled       *bool
+	Comment        string
 }
 
 // ProfileAdd → /ppp/profile/add (analisis §1.12).
@@ -58,6 +64,24 @@ func (c *Client) ProfileAdd(ctx context.Context, a ProfileAddArgs) (string, erro
 	if a.RateLimit != "" {
 		pairs = append(pairs, roslib.NewPair("rate-limit", a.RateLimit))
 	}
+	if a.SessionTimeout != "" {
+		pairs = append(pairs, roslib.NewPair("session-timeout", a.SessionTimeout))
+	}
+	if a.IdleTimeout != "" {
+		pairs = append(pairs, roslib.NewPair("idle-timeout", a.IdleTimeout))
+	}
+	if a.ParentQueue != "" {
+		pairs = append(pairs, roslib.NewPair("parent-queue", a.ParentQueue))
+	}
+	if a.OnUp != "" {
+		pairs = append(pairs, roslib.NewPair("on-up", a.OnUp))
+	}
+	if a.OnDown != "" {
+		pairs = append(pairs, roslib.NewPair("on-down", a.OnDown))
+	}
+	if a.Disabled != nil {
+		pairs = append(pairs, roslib.NewPair("disabled", mikrotik.BoolWord(*a.Disabled)))
+	}
 	if a.Comment != "" {
 		pairs = append(pairs, roslib.NewPair("comment", a.Comment))
 	}
@@ -73,12 +97,18 @@ func (c *Client) ProfileAdd(ctx context.Context, a ProfileAddArgs) (string, erro
 
 // ProfileSetArgs adalah parameter ProfileSet.
 type ProfileSetArgs struct {
-	ID         string // wajib
-	Name       string
-	LocalAddr  string
-	RemoteAddr string
-	RateLimit  string
-	Comment    *string
+	ID             string // wajib
+	Name           string
+	LocalAddr      string
+	RemoteAddr     string
+	RateLimit      string
+	SessionTimeout *string
+	IdleTimeout    *string
+	ParentQueue    *string
+	OnUp           *string
+	OnDown         *string
+	Disabled       *bool
+	Comment        *string
 }
 
 // ProfileSet → /ppp/profile/set (analisis §1.12).
@@ -98,6 +128,24 @@ func (c *Client) ProfileSet(ctx context.Context, a ProfileSetArgs) error {
 	}
 	if a.RateLimit != "" {
 		pairs = append(pairs, roslib.NewPair("rate-limit", a.RateLimit))
+	}
+	if a.SessionTimeout != nil {
+		pairs = append(pairs, roslib.NewPair("session-timeout", *a.SessionTimeout))
+	}
+	if a.IdleTimeout != nil {
+		pairs = append(pairs, roslib.NewPair("idle-timeout", *a.IdleTimeout))
+	}
+	if a.ParentQueue != nil {
+		pairs = append(pairs, roslib.NewPair("parent-queue", *a.ParentQueue))
+	}
+	if a.OnUp != nil {
+		pairs = append(pairs, roslib.NewPair("on-up", *a.OnUp))
+	}
+	if a.OnDown != nil {
+		pairs = append(pairs, roslib.NewPair("on-down", *a.OnDown))
+	}
+	if a.Disabled != nil {
+		pairs = append(pairs, roslib.NewPair("disabled", mikrotik.BoolWord(*a.Disabled)))
 	}
 	if a.Comment != nil {
 		pairs = append(pairs, roslib.NewPair("comment", *a.Comment))
@@ -133,6 +181,7 @@ func sentenceToProfile(s *roslib.Sentence) domain.PPPProfile {
 		UseCompression: s.Get("use-compression"),
 		UseEncryption:  s.Get("use-encryption"),
 		ChangeTCPMSS:   s.Get("change-tcp-mss"),
+		Disabled:       s.BoolOr("disabled", false),
 		Comment:        s.Get("comment"),
 	}
 }

@@ -66,6 +66,19 @@ Kalau diminta tambah command baru:
 
 Semua step di atas harus muncul di satu PR.
 
+## OpenAPI / Scalar Docs
+
+Source spec di `docs/openapi/` multi-file (`openapi.yaml` + `paths/*.yaml` + `schemas/*.yaml` + `components/*.yaml`). Scalar UI di `/docs` tidak bisa resolve relative `$ref` lintas file di browser, jadi harus di-**bundle** dulu.
+
+Workflow tiap kali edit OpenAPI:
+
+1. Edit file source di `docs/openapi/{paths,schemas,components}/*.yaml`.
+2. `make openapi-lint` — validasi struktur multi-file (Redocly).
+3. `make openapi-bundle` — generate `docs/openapi/openapi.bundle.yaml` (single self-contained file, di-embed via `//go:embed` di `docs/embed.go`).
+4. Commit kedua: source + artifact bundle. CI verifies via `make openapi-bundle-check`.
+
+Scalar load `/docs/openapi.yaml` yang men-serve bundle dari memory (lihat `api/routes.go` `RegisterDocs`). Tidak perlu filesystem akses saat runtime — binary self-contained.
+
 ## Yang Harus Dihindari
 
 - ❌ Helper "utils" generik tanpa konteks.

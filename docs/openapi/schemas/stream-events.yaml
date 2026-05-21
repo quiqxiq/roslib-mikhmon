@@ -39,18 +39,20 @@ PPPSecretEvent:
   description: |
     Event delta dari /stream/ppp/secrets. Kalau `dead=true`, row secret
     telah dihapus dari table.
-  required: [id, name, disabled, dead]
+  required: [id, name, limit_bytes_in, limit_bytes_out, disabled, dead]
   properties:
-    id:             { type: string, example: "*1" }
-    name:           { type: string, example: "pppoe-user01" }
-    service:        { type: string, example: "pppoe" }
-    profile:        { type: string, example: "default" }
-    local_address:  { type: string, example: "10.0.0.1" }
-    remote_address: { type: string, example: "10.0.0.5" }
-    caller_id:      { type: string }
-    disabled:       { type: boolean }
-    comment:        { type: string }
-    dead:           { type: boolean, description: "true = row deleted." }
+    id:                     { type: string, example: "*1" }
+    name:                   { type: string, example: "pppoe-user01" }
+    service:                { type: string, example: "pppoe" }
+    profile:                { type: string, example: "default" }
+    limit_bytes_in:         { type: integer, format: int64, example: 0 }
+    limit_bytes_out:        { type: integer, format: int64, example: 0 }
+    last_logged_out:        { type: string, example: "may/20/2026 10:00:00" }
+    last_caller_id:         { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    last_disconnect_reason: { type: string, example: "user-request" }
+    disabled:               { type: boolean }
+    comment:                { type: string }
+    dead:                   { type: boolean, description: "true = row deleted." }
 
 HotspotUserEvent:
   type: object
@@ -72,11 +74,19 @@ HotspotUserEvent:
 
 PPPInactiveEvent:
   type: object
-  description: Derived inactive PPP event dari enabled secrets minus active sessions.
-  required: [secret, action]
+  description: |
+    Derived inactive PPP event dari enabled secrets minus active sessions.
+    Field `address` = last-known IP dari /ppp/active (kosong kalau secret
+    belum pernah aktif sejak workflow start).
+  required: [name, action]
   properties:
-    secret:
-      $ref: '#/PPPSecretEvent'
+    name:                   { type: string, example: "pppoe-user01" }
+    profile:                { type: string, example: "default" }
+    caller_id:              { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    last_caller_id:         { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    last_logged_out:        { type: string, example: "may/20/2026 10:00:00" }
+    last_disconnect_reason: { type: string, example: "user-request" }
+    address:                { type: string, example: "10.0.0.5", description: "Last-known IP dari /ppp/active." }
     action:
       type: string
       enum: [added, removed, changed]

@@ -16,9 +16,18 @@ const (
 )
 
 // PPPInactiveEvent → derived enabled /ppp/secret minus /ppp/active event (analisis §1.12, §4).
+//
+// Address = last-known IP yang di-track dari /ppp/active stream. Kosong kalau
+// secret belum pernah aktif sejak workflow start.
 type PPPInactiveEvent struct {
-	Secret domain.PPPSecret
-	Action string
+	Name                 string
+	Profile              string
+	CallerID             string
+	LastCallerID         string
+	LastLoggedOut        string
+	LastDisconnectReason string
+	Address              string
+	Action               string
 }
 
 // PPPInactiveStream → derived enabled /ppp/secret minus /ppp/active stream (analisis §1.12, §4).
@@ -76,6 +85,7 @@ type pppInactiveState struct {
 	configuredIDs map[string]string
 	activeIDs     map[string]string
 	activeCounts  map[string]int
+	lastAddress   map[string]string // key: secret name → last-seen address di /ppp/active
 	inactive      map[string]domain.PPPSecret
 	h             func(PPPInactiveEvent)
 }
@@ -86,6 +96,7 @@ func newPPPInactiveState(h func(PPPInactiveEvent)) *pppInactiveState {
 		configuredIDs: make(map[string]string),
 		activeIDs:     make(map[string]string),
 		activeCounts:  make(map[string]int),
+		lastAddress:   make(map[string]string),
 		inactive:      make(map[string]domain.PPPSecret),
 		h:             h,
 	}
@@ -134,6 +145,9 @@ func (s *pppInactiveState) onActive(row *roslib.Sentence) {
 		s.removeActiveLocked(id, name)
 	} else if name != "" {
 		s.setActiveLocked(id, name)
+		if addr := row.Get("address"); addr != "" {
+			s.lastAddress[name] = addr
+		}
 	}
 	events := s.reconcileLocked()
 	s.mu.Unlock()
@@ -186,20 +200,33 @@ func (s *pppInactiveState) reconcileLocked() []PPPInactiveEvent {
 	for name, prev := range s.inactive {
 		cur, ok := next[name]
 		if !ok {
-			events = append(events, PPPInactiveEvent{Secret: prev, Action: inactiveActionRemoved})
+			events = append(events, s.buildPPPInactiveEvent(prev, inactiveActionRemoved))
 			continue
 		}
 		if cur != prev {
-			events = append(events, PPPInactiveEvent{Secret: cur, Action: inactiveActionChanged})
+			events = append(events, s.buildPPPInactiveEvent(cur, inactiveActionChanged))
 		}
 	}
 	for name, cur := range next {
 		if _, ok := s.inactive[name]; !ok {
-			events = append(events, PPPInactiveEvent{Secret: cur, Action: inactiveActionAdded})
+			events = append(events, s.buildPPPInactiveEvent(cur, inactiveActionAdded))
 		}
 	}
 	s.inactive = next
 	return events
+}
+
+func (s *pppInactiveState) buildPPPInactiveEvent(sec domain.PPPSecret, action string) PPPInactiveEvent {
+	return PPPInactiveEvent{
+		Name:                 sec.Name,
+		Profile:              sec.Profile,
+		CallerID:             sec.CallerID,
+		LastCallerID:         sec.LastCallerID,
+		LastLoggedOut:        sec.LastLoggedOut,
+		LastDisconnectReason: sec.LastDisconnectReason,
+		Address:              s.lastAddress[sec.Name],
+		Action:               action,
+	}
 }
 
 func (s *pppInactiveState) emit(events []PPPInactiveEvent) {

@@ -122,10 +122,11 @@ type PPPSecret struct {
 	RemoteIPv6Prefix string
 	LimitBytesIn     int64
 	LimitBytesOut    int64
-	LastLoggedOut    string
-	LastCallerID     string
-	Disabled         bool
-	Comment          string
+	LastLoggedOut        string
+	LastCallerID         string
+	LastDisconnectReason string
+	Disabled             bool
+	Comment              string
 }
 
 // PPPProfile = row /ppp/profile/print.
@@ -146,6 +147,7 @@ type PPPProfile struct {
 	UseCompression string // "default" | "yes" | "no"
 	UseEncryption  string // "default" | "yes" | "no"
 	ChangeTCPMSS   string // "default" | "yes" | "no"
+	Disabled       bool
 	Comment        string
 }
 

@@ -96,24 +96,28 @@ type LogEvent struct {
 // (mengikuti /ppp/secret/print follow). Field dead=true menandakan
 // row yang dihapus dari tabel.
 type PPPSecretEvent struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Service    string `json:"service,omitempty"`
-	Profile    string `json:"profile,omitempty"`
-	LocalAddr  string `json:"local_address,omitempty"`
-	RemoteAddr string `json:"remote_address,omitempty"`
-	CallerID   string `json:"caller_id,omitempty"`
-	Disabled   bool   `json:"disabled"`
-	Comment    string `json:"comment,omitempty"`
-	Dead       bool   `json:"dead"`
+	ID                   string `json:"id"`
+	Name                 string `json:"name"`
+	Service              string `json:"service,omitempty"`
+	Profile              string `json:"profile,omitempty"`
+	LimitBytesIn         int64  `json:"limit_bytes_in"`
+	LimitBytesOut        int64  `json:"limit_bytes_out"`
+	LastLoggedOut        string `json:"last_logged_out,omitempty"`
+	LastCallerID         string `json:"last_caller_id,omitempty"`
+	LastDisconnectReason string `json:"last_disconnect_reason,omitempty"`
+	Disabled             bool   `json:"disabled"`
+	Comment              string `json:"comment,omitempty"`
+	Dead                 bool   `json:"dead"`
 }
 
 // FromDomainPPPSecretEvent memetakan domain.PPPSecret + flag dead ke event.
 func FromDomainPPPSecretEvent(s domain.PPPSecret, dead bool) PPPSecretEvent {
 	return PPPSecretEvent{
 		ID: s.ID, Name: s.Name, Service: s.Service, Profile: s.Profile,
-		LocalAddr: s.LocalAddr, RemoteAddr: s.RemoteAddr, CallerID: s.CallerID,
-		Disabled: s.Disabled, Comment: s.Comment, Dead: dead,
+		LimitBytesIn: s.LimitBytesIn, LimitBytesOut: s.LimitBytesOut,
+		LastLoggedOut: s.LastLoggedOut, LastCallerID: s.LastCallerID,
+		LastDisconnectReason: s.LastDisconnectReason,
+		Disabled:             s.Disabled, Comment: s.Comment, Dead: dead,
 	}
 }
 
@@ -145,9 +149,18 @@ func FromDomainHotspotUserEvent(u domain.HotspotUser, dead bool) HotspotUserEven
 // PPPInactiveEvent adalah typed event untuk SSE /stream/ppp/inactive
 // (derived: enabled /ppp/secret minus /ppp/active). Action salah satu:
 // "added" | "removed" | "changed".
+//
+// Field `address` = last-known IP, di-track dari /ppp/active oleh workflow
+// state machine. Kosong kalau secret belum pernah aktif sejak server start.
 type PPPInactiveEvent struct {
-	Secret PPPSecretEvent `json:"secret"`
-	Action string         `json:"action"`
+	Name                 string `json:"name"`
+	Profile              string `json:"profile,omitempty"`
+	CallerID             string `json:"caller_id,omitempty"`
+	LastCallerID         string `json:"last_caller_id,omitempty"`
+	LastLoggedOut        string `json:"last_logged_out,omitempty"`
+	LastDisconnectReason string `json:"last_disconnect_reason,omitempty"`
+	Address              string `json:"address,omitempty"`
+	Action               string `json:"action"`
 }
 
 // HotspotInactiveEvent adalah typed event untuk SSE /stream/hotspot/inactive

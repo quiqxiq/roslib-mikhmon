@@ -26,7 +26,7 @@ func TestPPPInactiveStream_emitsAddedRemovedAdded(t *testing.T) {
 
 	events := make(chan string, 8)
 	err := cs.WF.PPPInactiveStream("ppp-inactive", func(e workflows.PPPInactiveEvent) {
-		events <- e.Action + ":" + e.Secret.Name
+		events <- e.Action + ":" + e.Name
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cs.WF.StopPPPInactiveStream("ppp-inactive") })
@@ -42,6 +42,46 @@ func TestPPPInactiveStream_emitsAddedRemovedAdded(t *testing.T) {
 
 	require.NoError(t, srv.EmitToStream(activeTag, "=.id=*A1", "=.dead=true"))
 	require.Equal(t, "added:alice", awaitWorkflowString(t, events))
+}
+
+// TestPPPInactiveStream_addressTrackedFromActive verifies bahwa state machine
+// catat `address` dari /ppp/active stream dan kembalikan field tersebut di
+// event inactive berikutnya (last-known IP) — sesuai spec PPPInactiveEvent.
+func TestPPPInactiveStream_addressTrackedFromActive(t *testing.T) {
+	skipIfRace(t)
+	cs, srv := testutil.NewTestClientSet(t)
+	srv.OnStream(tcpmock.MatchCommand("/ppp/active/print"))
+	srv.OnStream(tcpmock.MatchCommand("/ppp/secret/print"))
+
+	events := make(chan workflows.PPPInactiveEvent, 8)
+	err := cs.WF.PPPInactiveStream("ppp-inactive-addr", func(e workflows.PPPInactiveEvent) {
+		events <- e
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cs.WF.StopPPPInactiveStream("ppp-inactive-addr") })
+
+	secretTag := awaitWorkflowStreamTag(t, srv, "/ppp/secret/print", time.Second)
+	activeTag := awaitWorkflowStreamTag(t, srv, "/ppp/active/print", time.Second)
+
+	// 1) Secret muncul → "added", belum ada address.
+	require.NoError(t, srv.EmitToStream(secretTag, "=.id=*S1", "=name=bob", "=disabled=false", "=profile=vip"))
+	ev := awaitWorkflowEvent(t, events)
+	require.Equal(t, "added", ev.Action)
+	require.Equal(t, "bob", ev.Name)
+	require.Empty(t, ev.Address, "address kosong sebelum active pernah dilihat")
+
+	// 2) Active masuk dengan address → "removed" inactive.
+	require.NoError(t, srv.EmitToStream(activeTag, "=.id=*A1", "=name=bob", "=address=10.20.30.40"))
+	ev = awaitWorkflowEvent(t, events)
+	require.Equal(t, "removed", ev.Action)
+
+	// 3) Active hilang → "added" inactive lagi, kali ini Address = last-known IP.
+	require.NoError(t, srv.EmitToStream(activeTag, "=.id=*A1", "=.dead=true"))
+	ev = awaitWorkflowEvent(t, events)
+	require.Equal(t, "added", ev.Action)
+	require.Equal(t, "bob", ev.Name)
+	require.Equal(t, "vip", ev.Profile)
+	require.Equal(t, "10.20.30.40", ev.Address, "Address harus = last-known IP dari /ppp/active")
 }
 
 func TestHotspotInactiveStream_emitsAddedRemovedAdded(t *testing.T) {
@@ -98,4 +138,15 @@ func awaitWorkflowString(t *testing.T, ch <-chan string) string {
 		t.Fatal("did not receive event")
 	}
 	return ""
+}
+
+func awaitWorkflowEvent(t *testing.T, ch <-chan workflows.PPPInactiveEvent) workflows.PPPInactiveEvent {
+	t.Helper()
+	select {
+	case got := <-ch:
+		return got
+	case <-time.After(2 * time.Second):
+		t.Fatal("did not receive event")
+	}
+	return workflows.PPPInactiveEvent{}
 }

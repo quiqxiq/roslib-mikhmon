@@ -2,6 +2,7 @@ package ppp
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/quiqxiq/roslib"
 	"github.com/quiqxiq/roslib-mikhmon/domain"
@@ -36,15 +37,17 @@ func (c *Client) SecretByName(ctx context.Context, name string) (domain.PPPSecre
 
 // SecretAddArgs adalah parameter SecretAdd.
 type SecretAddArgs struct {
-	Name       string // wajib
-	Password   string
-	Service    string // pppoe, l2tp, pptp, ovpn, etc
-	Profile    string
-	LocalAddr  string
-	RemoteAddr string
-	CallerID   string // filter calling station (mis. MAC untuk PPPoE)
-	Disabled   *bool
-	Comment    string
+	Name          string // wajib
+	Password      string
+	Service       string // pppoe, l2tp, pptp, ovpn, etc
+	Profile       string
+	LocalAddr     string
+	RemoteAddr    string
+	CallerID      string // filter calling station (mis. MAC untuk PPPoE)
+	LimitBytesIn  int64  // quota total inbound; 0 = tidak dikirim
+	LimitBytesOut int64  // quota total outbound; 0 = tidak dikirim
+	Disabled      *bool
+	Comment       string
 }
 
 // SecretAdd → /ppp/secret/add (analisis §1.12).
@@ -71,6 +74,12 @@ func (c *Client) SecretAdd(ctx context.Context, a SecretAddArgs) (string, error)
 	if a.CallerID != "" {
 		pairs = append(pairs, roslib.NewPair("caller-id", a.CallerID))
 	}
+	if a.LimitBytesIn != 0 {
+		pairs = append(pairs, roslib.NewPair("limit-bytes-in", strconv.FormatInt(a.LimitBytesIn, 10)))
+	}
+	if a.LimitBytesOut != 0 {
+		pairs = append(pairs, roslib.NewPair("limit-bytes-out", strconv.FormatInt(a.LimitBytesOut, 10)))
+	}
 	if a.Disabled != nil {
 		pairs = append(pairs, roslib.NewPair("disabled", mikrotik.BoolWord(*a.Disabled)))
 	}
@@ -89,16 +98,18 @@ func (c *Client) SecretAdd(ctx context.Context, a SecretAddArgs) (string, error)
 
 // SecretSetArgs adalah parameter SecretSet.
 type SecretSetArgs struct {
-	ID         string // wajib
-	Name       string
-	Password   string
-	Service    string
-	Profile    string
-	LocalAddr  string
-	RemoteAddr string
-	CallerID   *string
-	Disabled   *bool
-	Comment    *string
+	ID            string // wajib
+	Name          string
+	Password      string
+	Service       string
+	Profile       string
+	LocalAddr     string
+	RemoteAddr    string
+	CallerID      *string
+	LimitBytesIn  *int64 // nil = no change; *0 = explicit reset ke 0 (unlimited)
+	LimitBytesOut *int64
+	Disabled      *bool
+	Comment       *string
 }
 
 // SecretSet → /ppp/secret/set (analisis §1.12).
@@ -127,6 +138,12 @@ func (c *Client) SecretSet(ctx context.Context, a SecretSetArgs) error {
 	}
 	if a.CallerID != nil {
 		pairs = append(pairs, roslib.NewPair("caller-id", *a.CallerID))
+	}
+	if a.LimitBytesIn != nil {
+		pairs = append(pairs, roslib.NewPair("limit-bytes-in", strconv.FormatInt(*a.LimitBytesIn, 10)))
+	}
+	if a.LimitBytesOut != nil {
+		pairs = append(pairs, roslib.NewPair("limit-bytes-out", strconv.FormatInt(*a.LimitBytesOut, 10)))
 	}
 	if a.Disabled != nil {
 		pairs = append(pairs, roslib.NewPair("disabled", mikrotik.BoolWord(*a.Disabled)))
@@ -158,23 +175,24 @@ func (c *Client) SecretRemove(ctx context.Context, id string) error {
 
 func sentenceToSecret(s *roslib.Sentence) domain.PPPSecret {
 	return domain.PPPSecret{
-		ID:               s.Get(".id"),
-		Name:             s.Get("name"),
-		Password:         s.Get("password"),
-		Service:          s.Get("service"),
-		Profile:          s.Get("profile"),
-		LocalAddr:        s.Get("local-address"),
-		RemoteAddr:       s.Get("remote-address"),
-		CallerID:         s.Get("caller-id"),
-		Routes:           s.Get("routes"),
-		IPv6Routes:       s.Get("ipv6-routes"),
-		RemoteIPv6Prefix: s.Get("remote-ipv6-prefix"),
-		LimitBytesIn:     s.IntOr("limit-bytes-in", 0),
-		LimitBytesOut:    s.IntOr("limit-bytes-out", 0),
-		LastLoggedOut:    s.Get("last-logged-out"),
-		LastCallerID:     s.Get("last-caller-id"),
-		Disabled:         s.BoolOr("disabled", false),
-		Comment:          s.Get("comment"),
+		ID:                   s.Get(".id"),
+		Name:                 s.Get("name"),
+		Password:             s.Get("password"),
+		Service:              s.Get("service"),
+		Profile:              s.Get("profile"),
+		LocalAddr:            s.Get("local-address"),
+		RemoteAddr:           s.Get("remote-address"),
+		CallerID:             s.Get("caller-id"),
+		Routes:               s.Get("routes"),
+		IPv6Routes:           s.Get("ipv6-routes"),
+		RemoteIPv6Prefix:     s.Get("remote-ipv6-prefix"),
+		LimitBytesIn:         s.IntOr("limit-bytes-in", 0),
+		LimitBytesOut:        s.IntOr("limit-bytes-out", 0),
+		LastLoggedOut:        s.Get("last-logged-out"),
+		LastCallerID:         s.Get("last-caller-id"),
+		LastDisconnectReason: s.Get("last-disconnect-reason"),
+		Disabled:             s.BoolOr("disabled", false),
+		Comment:              s.Get("comment"),
 	}
 }
 

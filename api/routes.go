@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/quiqxiq/roslib-mikhmon/api/handler"
 	"github.com/quiqxiq/roslib-mikhmon/api/middleware"
+	"github.com/quiqxiq/roslib-mikhmon/docs"
 	"github.com/quiqxiq/roslib-mikhmon/service/auth"
 )
 
@@ -132,10 +133,16 @@ var roleAdmin = auth.RoleAdmin
 
 // RegisterDocs mounts OpenAPI spec + interactive docs UI (Scalar).
 // Register sebagai group di root router (bukan di /api/v1).
+//
+// Spec di-serve sebagai single bundled file (generated via `make openapi-bundle`,
+// embedded via //go:embed). Scalar tidak handal resolve relative $ref lintas
+// file di browser, jadi multi-file di docs/openapi/{paths,schemas,components}
+// di-bundle ke openapi.bundle.yaml saat build, lalu di-embed ke binary.
 func RegisterDocs(r *gin.Engine) {
-	// Serve seluruh direktori openapi/ agar Scalar bisa resolve
-	// relative $ref (schemas/*.yaml, paths/*.yaml).
-	r.Static("/docs/openapi", "docs/openapi")
-	// Serve Scalar UI
-	r.StaticFile("/docs", "docs/scalar/index.html")
+	r.GET("/docs/openapi.yaml", func(c *gin.Context) {
+		c.Data(200, "application/yaml; charset=utf-8", docs.OpenAPIBundle)
+	})
+	r.GET("/docs", func(c *gin.Context) {
+		c.Data(200, "text/html; charset=utf-8", docs.ScalarIndexHTML)
+	})
 }

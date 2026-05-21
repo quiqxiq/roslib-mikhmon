@@ -191,8 +191,14 @@ func (s *Stream) PPPInactive(c *gin.Context) {
 		func(b *sse.Broker) error {
 			return s.WF.PPPInactiveStream(topic, func(ev workflows.PPPInactiveEvent) {
 				b.Publish(sse.Event{Type: "inactive", Data: dto.PPPInactiveEvent{
-					Secret: dto.FromDomainPPPSecretEvent(ev.Secret, false),
-					Action: ev.Action,
+					Name:                 ev.Name,
+					Profile:              ev.Profile,
+					CallerID:             ev.CallerID,
+					LastCallerID:         ev.LastCallerID,
+					LastLoggedOut:        ev.LastLoggedOut,
+					LastDisconnectReason: ev.LastDisconnectReason,
+					Address:              ev.Address,
+					Action:               ev.Action,
 				}})
 			})
 		},

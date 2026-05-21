@@ -1,0 +1,6107 @@
+openapi: 3.0.3
+info:
+  title: roslib-mikhmon HTTP API
+  version: 1.0.0
+  description: |
+    REST + Server-Sent Events service di atas RouterOS API. Multi-router:
+    semua endpoint (kecuali Device CRUD & Health) berada di bawah
+    `/api/v1/devices/{device_id}/...` agar satu instance bisa melayani
+    banyak router sekaligus.
+
+    ## Response envelope
+
+    Semua endpoint pakai envelope konsisten:
+
+    - **Success single**: `{ "data": { ... } }`
+    - **Success list**:   `{ "data": [ ... ], "meta": { "count": N } }`
+    - **Error**:          `{ "error": { "code": "...", "message": "...", "path": "..." } }`
+
+    Error `code` stabil — frontend bisa branch dengan aman. Mapping:
+
+    | Code | HTTP | Trigger |
+    |---|---|---|
+    | `NOT_FOUND` | 404 | `mikrotik.ErrNotFound` |
+    | `INVALID_ARGUMENT` | 400 | `mikrotik.ErrInvalidArgument` |
+    | `AMBIGUOUS` | 409 | `mikrotik.ErrAmbiguous` |
+    | `VALIDATION` | 400 | body gagal validasi `gin` binding |
+    | `TIMEOUT` | 504 | `context.DeadlineExceeded` |
+    | `CANCELED` | 499 | `context.Canceled` |
+    | `INTERNAL` | 500 | uncategorized / panic recovery |
+    | `DEVICE_NOT_FOUND` | 404 | device middleware: slug tidak terhubung |
+    | `SERVICE_UNAVAILABLE` | 503 | InfluxDB / dependency lain down |
+
+    Setiap response menyertakan header `X-Request-ID` (16-char hex) untuk
+    korelasi log.
+
+    ## Authentication
+
+    Service ini sekarang mendukung **JWT access + refresh token**
+    (HS256). Bootstrap admin awal via env `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+
+    1. `POST /auth/login` → terima access (15 menit) + refresh (7 hari) token.
+    2. Pakai access token di header: `Authorization: Bearer <access_token>`.
+    3. Saat access expire → `POST /auth/refresh` (rotation).
+    4. `POST /auth/logout` revoke refresh token.
+
+    Role RBAC sederhana: `admin` (full), `operator` (CRUD device-scoped tanpa
+    `/auth/users`/reboot/shutdown), `viewer` (read-only).
+
+    ## Rate Limit & SSE Subscriber Cap
+
+    Semua endpoint authenticated: 60 req/menit per user (configurable via
+    `RATE_LIMIT_USER_RPM`). Endpoint mahal (voucher generate, bulk delete,
+    reboot, shutdown) dibatasi 10 req/menit. Endpoint anon (`/auth/login`,
+    `/healthz`) dibatasi 20 req/menit per IP.
+
+    SSE subscriber cap: 20 per topic, 50 per device (configurable). 429 +
+    `Retry-After` header dikembalikan saat terlewat.
+
+    ## Cara pakai SSE
+
+    Endpoint `/stream/*` mengembalikan `text/event-stream`. Format event:
+    ```
+    event: <type>
+    id: <id>
+    data: <JSON payload>
+
+    ```
+    JS contoh: `new EventSource('/api/v1/devices/rb-main/stream/hotspot/active')`.
+  contact:
+    name: roslib-mikhmon
+    url: https://github.com/quiqxiq/roslib-mikhmon
+  license:
+    name: Internal
+servers:
+  - url: http://127.0.0.1:8080/api/v1
+    description: Default local-only bind
+security:
+  - bearerAuth: []
+tags:
+  - name: Devices
+    description: |
+      CRUD device (slug, address, credential). Tidak butuh router fisik
+      nyala — endpoint ini hanya menyentuh database.
+  - name: System
+    description: |
+      Sistem-level RouterOS: identity, resource (CPU/mem/HDD), routerboard,
+      clock, reboot/shutdown, logging config, /log read.
+  - name: System Scripts
+    description: CRUD `/system/script` (workflow on-login, transaksi, dll.).
+  - name: System Schedulers
+    description: CRUD `/system/scheduler` (expiry job, kron, dll.).
+  - name: Hotspot Users
+    description: CRUD user hotspot, bulk delete, reset counter/usage.
+  - name: Hotspot Profiles
+    description: CRUD profile hotspot.
+  - name: Hotspot Sessions
+    description: List & kick session aktif hotspot.
+  - name: Hotspot Misc
+    description: Server, Host, Cookie, Binding.
+  - name: Vouchers
+    description: Generator batch voucher (workflow).
+  - name: Network
+    description: Interface, IP pool, ARP, DHCP lease, simple queue.
+  - name: PPP
+    description: PPP secret, profile, active session.
+  - name: Streaming
+    description: |
+      Server-Sent Events untuk update real-time. Tiap endpoint
+      menggunakan broker shared yang fan-out ke banyak subscriber tanpa
+      duplikasi backend stream.
+  - name: History
+    description: |
+      Query data historis dari InfluxDB (CPU, traffic, sales). Hanya
+      tersedia kalau `INFLUX_URL` di-set saat startup.
+  - name: Reports
+    description: |
+      Laporan penjualan voucher dari database lokal (Postgres). Tetap
+      bisa di-query meskipun router offline.
+  - name: Health
+    description: Health probe (DB + device manager + InfluxDB + SSE).
+  - name: Auth
+    description: |
+      Login, refresh, logout, dan profil user yang sedang aktif. Tiga endpoint
+      pertama public (override `security: []`), sisanya butuh Bearer token.
+  - name: Users
+    description: |
+      CRUD user (admin role required). Mengubah password / role / active=false
+      otomatis revoke semua refresh token milik user tersebut.
+  - name: Profile Configs
+    description: |
+      Konfigurasi mikhmon-local per hotspot profile (validity, harga,
+      expiry mode, lock MAC). Terpisah dari profile router-side.
+paths:
+  /healthz:
+    get:
+      tags:
+        - Health
+      summary: Health probe
+      description: |
+        Cek ringan dependency: DB ping, jumlah device terhubung vs total, status
+        InfluxDB (kalau enabled), dan SSE subscriber + drop count. Status code
+        200 kalau semua dependency relevan healthy, 503 kalau ada yang fail.
+        Dipanggil oleh Kubernetes / load balancer probe.
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HealthStatus'
+              examples:
+                healthy:
+                  summary: Semua dependency OK
+                  value:
+                    data:
+                      ok: true
+                      db: ok
+                      devices:
+                        connected: 3
+                        total: 3
+                      influx: ok
+                      sse_subscribers:
+                        hotspot-active:rb-main: 2
+        '503':
+          description: Salah satu dependency fail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HealthStatus'
+              examples:
+                db_down:
+                  summary: DB tidak bisa di-ping
+                  value:
+                    data:
+                      ok: false
+                      db: 'error: connection refused'
+                      devices:
+                        connected: 0
+                        total: 3
+                all_disconnected:
+                  summary: Semua router offline
+                  value:
+                    data:
+                      ok: false
+                      db: ok
+                      devices:
+                        connected: 0
+                        total: 3
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login dengan username + password
+      security: []
+      description: |
+        Verifikasi credentials, return access + refresh JWT. Access TTL
+        default 15m, refresh TTL default 168h (7d). Refresh token punya
+        `jti` unik tersimpan di tabel `refresh_tokens` untuk rotation /
+        revocation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin:
+                summary: Admin login
+                value:
+                  username: admin
+                  password: supersecretpw
+      responses:
+        '200':
+          description: Token pair berhasil di-issue
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '401':
+          description: Invalid credentials atau user inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                invalid:
+                  value:
+                    error:
+                      code: INVALID_CREDENTIALS
+                      message: invalid username or password
+                      path: /api/v1/auth/login
+        '429':
+          $ref: '#/components/responses/ErrorRateLimit'
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Tukar refresh token dengan pasangan token baru
+      security: []
+      description: |
+        Rotation: refresh token lama di-revoke (jti) dan pasangan baru di-issue.
+        Pemakaian token lama setelah ini akan ditolak (401 REFRESH_REVOKED).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Pasangan token baru
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Refresh token invalid / expired / sudah revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Revoke refresh token (idempotent)
+      security: []
+      description: |
+        Revoke refresh token. Access token tidak di-blacklist (stateless verify)
+        — akan expire sendiri dalam <= access TTL. Pemanggilan dengan token
+        garbage tetap return 204 (idempotent — tidak leak info).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Profil user yang sedang login
+      description: Return claims user dari access token.
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+  /auth/users:
+    get:
+      tags:
+        - Users
+      summary: List semua user (admin only)
+      description: Admin role required.
+      responses:
+        '200':
+          description: List users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+    post:
+      tags:
+        - Users
+      summary: Buat user baru (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+            examples:
+              operator:
+                summary: Buat operator
+                value:
+                  username: opuser
+                  password: strongpassword
+                  role: operator
+              viewer:
+                summary: Buat viewer (read-only)
+                value:
+                  username: report-viewer
+                  password: anothersafepw
+                  role: viewer
+      responses:
+        '201':
+          description: User dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '409':
+          description: Username sudah dipakai
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /auth/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags:
+        - Users
+      summary: Ambil detail user (admin only)
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - Users
+      summary: Update user (admin only)
+      description: |
+        Field yang null/absent tetap unchanged. Mengubah password / role /
+        active=false akan me-revoke semua refresh token user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+            examples:
+              disable:
+                summary: Nonaktifkan user
+                value:
+                  active: false
+              change_role:
+                summary: Ubah role ke admin
+                value:
+                  role: admin
+      responses:
+        '200':
+          description: User ter-update
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Users
+      summary: Hapus user (admin only)
+      description: Soft delete (gorm DeletedAt). Refresh token user di-revoke semuanya.
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices:
+    get:
+      tags:
+        - Devices
+      summary: List all devices
+      description: List semua device yang ter-register, termasuk yang `active=false`.
+      responses:
+        '200':
+          description: List device
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeviceResponse'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    post:
+      tags:
+        - Devices
+      summary: Create new device
+      description: |
+        Daftarkan device baru ke service + langsung dial. Kalau dial gagal,
+        device tetap di-save tapi response berisi `warning` (HTTP 201 tetap).
+        Frontend bisa tampilkan notice tanpa kehilangan record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreateRequest'
+            examples:
+              tls_router:
+                summary: Router via API-SSL (TLS)
+                value:
+                  slug: rb-main
+                  display_name: RB Main Office
+                  address: 192.168.88.1:8729
+                  username: admin
+                  password: secret123
+                  use_tls: true
+                  expiry_check_interval: 2m
+              plain_router:
+                summary: Router via API plain
+                value:
+                  slug: rb-warehouse
+                  display_name: RB Warehouse
+                  address: 192.168.99.1:8728
+                  username: admin
+                  password: secret123
+                  use_tls: false
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeviceWriteResponse'
+              examples:
+                success:
+                  value:
+                    data:
+                      device:
+                        id: 1
+                        slug: rb-main
+                        display_name: RB Main Office
+                        address: 192.168.88.1:8729
+                        username: admin
+                        use_tls: true
+                        status: connected
+                        expiry_check_interval: 2m
+                        active: true
+                        created_at: '2026-05-19T10:00:00Z'
+                with_warning:
+                  summary: Dial gagal tapi record tersimpan
+                  value:
+                    data:
+                      device:
+                        id: 2
+                        slug: rb-warehouse
+                        display_name: RB Warehouse
+                        address: 192.168.99.1:8728
+                        username: admin
+                        use_tls: false
+                        status: error
+                        last_error: 'dial tcp 192.168.99.1:8728: connect: no route to host'
+                        expiry_check_interval: 2m
+                        active: true
+                        created_at: '2026-05-19T10:01:00Z'
+                      warning: 'device saved but connection failed: dial tcp ...'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Devices
+      summary: Get device by ID/slug
+      responses:
+        '200':
+          description: Device detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeviceResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    put:
+      tags:
+        - Devices
+      summary: Update device
+      description: |
+        Sparse update. Field yang tidak di-set tidak akan diubah. Kalau
+        address/username/password berubah, koneksi lama di-disconnect dan
+        device di-dial ulang dengan credential baru.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdateRequest'
+            examples:
+              rotate_password:
+                summary: Rotate password saja
+                value:
+                  password: new-secret-456
+              disable:
+                summary: Disable device tanpa hapus
+                value:
+                  active: false
+      responses:
+        '200':
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DeviceWriteResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    delete:
+      tags:
+        - Devices
+      summary: Delete device
+      description: Hapus device dari DB + disconnect. Tidak menyentuh state di RouterOS.
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/identity:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/CacheQuery'
+      - $ref: '#/components/parameters/TtlQuery'
+    get:
+      tags:
+        - System
+      summary: Get router identity
+      description: '`/system/identity` — nama router. Cache opsional via `?cache=true&ttl=5m`.'
+      responses:
+        '200':
+          description: Identity
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemIdentityResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+        '504':
+          $ref: '#/components/responses/ErrorTimeout'
+  /devices/{device_id}/system/resource:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System
+      summary: Get system resource (CPU/mem/HDD)
+      description: Snapshot `/system/resource`.
+      responses:
+        '200':
+          description: Resource snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemResourceResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/routerboard:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System
+      summary: Get routerboard / firmware info
+      responses:
+        '200':
+          description: Routerboard info
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemRouterboardResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/clock:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System
+      summary: Get system clock & timezone
+      responses:
+        '200':
+          description: Clock
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemClockResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/reboot:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - System
+      summary: Reboot router (DESTRUCTIVE)
+      description: |
+        ⚠️ Memicu reboot router. Koneksi service akan putus selama ~30-60 detik;
+        device manager akan auto-reconnect setelah router online lagi.
+      responses:
+        '200':
+          description: Reboot issued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ActionResponse'
+              examples:
+                issued:
+                  value:
+                    data:
+                      action: reboot
+                      status: issued
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/shutdown:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - System
+      summary: Shutdown router (DESTRUCTIVE)
+      description: |
+        ⚠️ Power-off router. Tidak ada auto-reconnect; perlu intervensi fisik
+        untuk power-on lagi.
+      responses:
+        '200':
+          description: Shutdown issued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ActionResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/logging/by-prefix/{prefix}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/PrefixPath'
+    get:
+      tags:
+        - System
+      summary: Count log entries by topic prefix
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/system/logging/hotspot-disk:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - System
+      summary: Tambah action logging hotspot-disk
+      description: |
+        Side-effect di RouterOS: tambah action `logging-hotspot-disk` ke
+        `/system/logging/action` supaya log hotspot di-write ke disk.
+        Idempotent: kalau sudah ada, no-op.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoggingAddHotspotDiskRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/log:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/TopicsQuery'
+    get:
+      tags:
+        - System
+      summary: List log entries (snapshot)
+      description: |
+        Snapshot `/log/print` (bukan follow). Untuk stream live pakai
+        `GET /stream/log`.
+      responses:
+        '200':
+          description: Log list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntryResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/scripts:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System Scripts
+      summary: List scripts
+      description: |
+        List `/system/script`. Bisa filter via query: `?name=`, `?comment=`,
+        `?owner=`, `?source=` (substring match).
+      parameters:
+        - $ref: '#/components/parameters/NameQuery'
+        - $ref: '#/components/parameters/CommentQuery'
+        - $ref: '#/components/parameters/OwnerQuery'
+        - $ref: '#/components/parameters/SourceQuery'
+      responses:
+        '200':
+          description: Script list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ScriptResponse'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    post:
+      tags:
+        - System Scripts
+      summary: Create script
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScriptCreateRequest'
+            examples:
+              on_login:
+                summary: Script on-login
+                value:
+                  name: on-login-user01
+                  source: ':log info "login $user from $address";'
+                  comment: auto-generated by mikhmon
+                  policy: read,write,policy,test
+      responses:
+        '201':
+          description: Script created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/scripts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - System Scripts
+      summary: Get script by ID
+      responses:
+        '200':
+          description: Script detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ScriptResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - System Scripts
+      summary: Update script
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScriptUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - System Scripts
+      summary: Delete script
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/system/schedulers:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NameQuery'
+    get:
+      tags:
+        - System Schedulers
+      summary: List schedulers
+      description: List `/system/scheduler`. Filter `?name=` exact match.
+      responses:
+        '200':
+          description: Scheduler list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SchedulerResponse'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    post:
+      tags:
+        - System Schedulers
+      summary: Create scheduler
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchedulerCreateRequest'
+            examples:
+              daily_cleanup:
+                summary: Scheduler harian
+                value:
+                  name: expiry-check-daily
+                  on_event: /system/script run [find name=cleanup]
+                  start_time: '00:00:00'
+                  interval: 1d
+                  comment: auto-cleanup expired users
+      responses:
+        '201':
+          description: Scheduler created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/system/schedulers/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System Schedulers
+      summary: Count schedulers
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/system/schedulers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - System Schedulers
+      summary: Get scheduler by ID
+      responses:
+        '200':
+          description: Scheduler detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SchedulerResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - System Schedulers
+      summary: Update scheduler
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchedulerUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - System Schedulers
+      summary: Delete scheduler
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/users:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ProfileQuery'
+      - $ref: '#/components/parameters/CommentQuery'
+    get:
+      tags:
+        - Hotspot Users
+      summary: List hotspot users
+      description: List `/ip/hotspot/user`. Filter optional `?profile=` atau `?comment=` (post-filter).
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotUserResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    post:
+      tags:
+        - Hotspot Users
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotspotUserCreateRequest'
+            examples:
+              voucher_user:
+                summary: User dengan comment expiry (untuk expiry service)
+                value:
+                  name: user01
+                  password: p4ssw0rd
+                  profile: default
+                  server: all
+                  limit_uptime: 24h
+                  comment: may/19/2027 23:59:59
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+              examples:
+                success:
+                  value:
+                    data:
+                      id: '*5'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+  /devices/{device_id}/hotspot/users/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Hotspot Users
+      summary: Count hotspot users
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/hotspot/users/by-name/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NamePath'
+    get:
+      tags:
+        - Hotspot Users
+      summary: Get user by username
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotUserResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+        '409':
+          $ref: '#/components/responses/ErrorConflict'
+  /devices/{device_id}/hotspot/users/bulk-delete:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - Hotspot Users
+      summary: Bulk delete users
+      description: |
+        Hapus banyak user sekaligus. Tiap delete jalan cascade (lihat
+        DELETE /hotspot/users/{id}). Tidak fail-fast — kalau ada yang
+        gagal, response tetap 200 dengan rincian per ID di `failed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkIDsRequest'
+            examples:
+              bulk_ids:
+                summary: 3 user untuk dihapus
+                value:
+                  ids:
+                    - '*1'
+                    - '*2'
+                    - '*3'
+      responses:
+        '200':
+          description: Bulk result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BulkResult'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          success_count:
+                            type: integer
+                          failed_count:
+                            type: integer
+              examples:
+                all_success:
+                  summary: Semua sukses
+                  value:
+                    data:
+                      succeeded:
+                        - '*1'
+                        - '*2'
+                        - '*3'
+                      failed: {}
+                    meta:
+                      total: 3
+                      success_count: 3
+                      failed_count: 0
+                partial:
+                  summary: Sebagian gagal
+                  value:
+                    data:
+                      succeeded:
+                        - '*1'
+                        - '*3'
+                      failed:
+                        '*2': 'mikrotik: not found'
+                    meta:
+                      total: 3
+                      success_count: 2
+                      failed_count: 1
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - Hotspot Users
+      summary: Get user by RouterOS ID
+      responses:
+        '200':
+          description: User detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotUserResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - Hotspot Users
+      summary: Update user
+      description: Sparse update. Field kosong tidak diubah; field nullable bisa di-set "" untuk kosongkan.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotspotUserUpdateRequest'
+            examples:
+              change_profile:
+                summary: Pindahkan ke profile lain
+                value:
+                  profile: vip
+              extend_quota:
+                summary: Tambah quota
+                value:
+                  limit_bytes_total: 10737418240
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Hotspot Users
+      summary: Delete user (cascade)
+      description: |
+        Workflow cascade: hapus user + cleanup script/scheduler yang nama-nya
+        sama (mis. transaksi atau scheduler expiry per-user).
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/users/{id}/disabled:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - Hotspot Users
+      summary: Toggle disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBoolRequest'
+            examples:
+              disable:
+                value:
+                  value: true
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/users/{id}/expiry:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - Hotspot Users
+      summary: Set expiry comment
+      description: |
+        Tulis comment user dengan tanggal expiry (format mikhmon
+        `<mon>/dd/yyyy hh:mm:ss` lowercase). Diparse oleh expiry service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetStringRequest'
+            examples:
+              expiry:
+                value:
+                  value: jan/06/2099 14:32:01
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/users/{id}/mac:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - Hotspot Users
+      summary: Lock user ke MAC tertentu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetStringRequest'
+            examples:
+              lock:
+                value:
+                  value: AA:BB:CC:DD:EE:FF
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/users/{id}/reset-counters:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags:
+        - Hotspot Users
+      summary: Reset byte counters
+      description: '`/ip/hotspot/user/reset-counters` — reset bytes-in/out tanpa hapus user.'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/users/{id}/reset-usage:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags:
+        - Hotspot Users
+      summary: Reset limit-uptime + comment
+      description: Set `limit-uptime=0` dan kosongkan comment (reset user ke kondisi awal).
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/profile-configs:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Profile Configs
+      summary: List semua profile config untuk device
+      responses:
+        '200':
+          description: List configs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ProfileConfigResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '429':
+          $ref: '#/components/responses/ErrorRateLimit'
+  /devices/{device_id}/hotspot/profile-configs/{profile_name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - name: profile_name
+        in: path
+        required: true
+        schema:
+          type: string
+        example: default
+    get:
+      tags:
+        - Profile Configs
+      summary: Detail config satu profile
+      responses:
+        '200':
+          description: Profile config
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProfileConfigResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - Profile Configs
+      summary: Buat / update config (upsert)
+      description: |
+        Idempotent upsert by (device_id, profile_name). Return 201 kalau record
+        baru di-create, 200 kalau update. Validity di-normalize ke RouterOS
+        canonical sebelum simpan (mis. `168h` → `1w`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileConfigUpsertRequest'
+            examples:
+              paket_mingguan:
+                summary: Paket 1 minggu
+                value:
+                  expiry_mode: rem
+                  validity: 7d
+                  price: 10000
+                  sell_price: 12000
+                  lock_mac: false
+              paket_bulanan_premium:
+                summary: Paket bulanan premium (lock MAC)
+                value:
+                  expiry_mode: remc
+                  validity: 30d
+                  price: 35000
+                  sell_price: 50000
+                  lock_mac: true
+      responses:
+        '200':
+          description: Config ter-update
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProfileConfigResponse'
+        '201':
+          description: Config baru dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProfileConfigResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+    delete:
+      tags:
+        - Profile Configs
+      summary: Hapus config profile
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '403':
+          $ref: '#/components/responses/ErrorForbidden'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/profiles:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/CacheQuery'
+      - $ref: '#/components/parameters/TtlQuery'
+    get:
+      tags:
+        - Hotspot Profiles
+      summary: List profiles
+      description: List `/ip/hotspot/user/profile`. Cache opsional.
+      responses:
+        '200':
+          description: Profile list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotProfileResponse'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+    post:
+      tags:
+        - Hotspot Profiles
+      summary: Create profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotspotProfileCreateRequest'
+            examples:
+              vip_2m:
+                summary: Profile VIP 2M/2M
+                value:
+                  name: vip-2m
+                  address_pool: hs-pool
+                  rate_limit: 2M/2M
+                  shared_users: 1
+                  on_login: ':log info "login $user from $address";'
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/profiles/by-name/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NamePath'
+    get:
+      tags:
+        - Hotspot Profiles
+      summary: Get profile by name
+      responses:
+        '200':
+          description: Profile detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotProfileResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/profiles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - Hotspot Profiles
+      summary: Get profile by ID
+      responses:
+        '200':
+          description: Profile detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotProfileResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - Hotspot Profiles
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotspotProfileUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Hotspot Profiles
+      summary: Delete profile (cascade)
+      description: |
+        Hapus profile. Kalau body `{name: ...}` di-set, workflow akan cleanup
+        scheduler/script yang nama-nya match (cascade delete).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HotspotProfileDeleteRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/servers:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/CacheQuery'
+      - $ref: '#/components/parameters/TtlQuery'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: List hotspot servers
+      responses:
+        '200':
+          description: Server list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotServerResponse'
+  /devices/{device_id}/hotspot/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ServerQuery'
+    get:
+      tags:
+        - Hotspot Sessions
+      summary: List active sessions
+      description: List session hotspot yang sedang aktif (sudah login). Filter `?server=`.
+      responses:
+        '200':
+          description: Active session list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotActiveResponse'
+  /devices/{device_id}/hotspot/active/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ServerQuery'
+    get:
+      tags:
+        - Hotspot Sessions
+      summary: Count active sessions
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/hotspot/active/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - Hotspot Sessions
+      summary: Get active session by ID
+      responses:
+        '200':
+          description: Session detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotActiveResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Hotspot Sessions
+      summary: Kick (disconnect) session
+      description: |
+        Workflow KickActive: hapus cookie user (anti auto-relogin) → hapus
+        active record. Tidak hapus user dari `/hotspot/user`.
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/hosts:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: List hosts
+      responses:
+        '200':
+          description: Host list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotHostResponse'
+  /devices/{device_id}/hotspot/hosts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - Hotspot Misc
+      summary: Delete host binding
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/cookies:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/UserQuery'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: List cookies
+      description: List auto-login cookies. Filter `?user=`.
+      responses:
+        '200':
+          description: Cookie list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotCookieResponse'
+  /devices/{device_id}/hotspot/cookies/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: Count cookies
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/hotspot/cookies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - Hotspot Misc
+      summary: Delete cookie
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/bindings:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: List MAC bindings
+      description: |
+        List `/ip/hotspot/ip-binding`. Type `bypassed` melewatkan captive
+        portal, `blocked` selalu blokir, `regular` aturan default.
+      responses:
+        '200':
+          description: Binding list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HotspotBindingResponse'
+  /devices/{device_id}/hotspot/bindings/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: Count bindings
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/hotspot/bindings/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - Hotspot Misc
+      summary: Get binding by ID
+      responses:
+        '200':
+          description: Binding detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HotspotBindingResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Hotspot Misc
+      summary: Delete binding
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/hotspot/bindings/{id}/type:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - Hotspot Misc
+      summary: Set binding type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBindingTypeRequest'
+            examples:
+              bypassed:
+                summary: Bypass captive portal
+                value:
+                  type: bypassed
+              blocked:
+                summary: Blokir total MAC
+                value:
+                  type: blocked
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/bindings/{id}/disabled:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - Hotspot Misc
+      summary: Toggle binding disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBoolRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/hotspot/vouchers/generate:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - Vouchers
+      summary: Generate batch voucher
+      description: |
+        Workflow GenerateVouchers — create `batch_size` user random di
+        `/ip/hotspot/user`. Username = `prefix` + random(length) dari charset.
+        `user_mode=vc` → user==password (voucher code).
+        `user_mode=up` → user & password independen.
+        Kalau `validity` di-set, comment user di-stamp dengan tanggal
+        expiry (untuk expiry service).
+
+        Response 207 Multi-Status saat partial failure — voucher yang sudah
+        ke-create tetap valid, frontend bisa rollback manual via bulk-delete.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoucherGenerateRequest'
+            examples:
+              voucher_code:
+                summary: 50 voucher code (user==password)
+                value:
+                  user_mode: vc
+                  length: 8
+                  prefix: vc-
+                  charset: lower_number
+                  profile: default
+                  time_limit: 24h
+                  validity: 168h
+                  price: 10000
+                  sell_price: 12000
+                  batch_size: 50
+              user_pass:
+                summary: 10 user+pass terpisah, harian
+                value:
+                  user_mode: up
+                  length: 6
+                  charset: mixed_number
+                  profile: vip-2m
+                  time_limit: 12h
+                  price: 25000
+                  sell_price: 30000
+                  batch_size: 10
+      responses:
+        '200':
+          description: Semua voucher berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/VoucherGenerateResponse'
+              examples:
+                success:
+                  summary: 50 voucher created
+                  value:
+                    data:
+                      vouchers:
+                        - id: '*1'
+                          username: vc-a1b2c3d4
+                          password: a1b2c3d4
+                        - id: '*2'
+                          username: vc-e5f6g7h8
+                          password: e5f6g7h8
+                      count: 50
+        '207':
+          description: Partial — sebagian voucher gagal di-create
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/VoucherGenerateResponse'
+              examples:
+                partial:
+                  summary: 9 dari 10 sukses, 10th duplikat
+                  value:
+                    data:
+                      vouchers:
+                        - id: '*1'
+                          username: vc-aaaa1111
+                          password: aaaa1111
+                        - id: '*2'
+                          username: vc-bbbb2222
+                          password: bbbb2222
+                      count: 9
+                      partial: true
+                      error: 'UserAdd "vc-cccc3333": mikrotik: duplicate name'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/network/interfaces:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Network
+      summary: List interfaces
+      responses:
+        '200':
+          description: Interface list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/InterfaceResponse'
+  /devices/{device_id}/network/pools:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/CacheQuery'
+      - $ref: '#/components/parameters/TtlQuery'
+    get:
+      tags:
+        - Network
+      summary: List IP pools
+      responses:
+        '200':
+          description: Pool list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/IPPoolResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+    post:
+      tags:
+        - Network
+      summary: Create IP pool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPPoolCreateRequest'
+      responses:
+        '201':
+          description: Created pool ID
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/network/pools/by-name/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NamePath'
+    get:
+      tags:
+        - Network
+      summary: Get IP pool by name
+      responses:
+        '200':
+          description: Pool detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IPPoolResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/network/pools/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    put:
+      tags:
+        - Network
+      summary: Update IP pool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IPPoolUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - Network
+      summary: Delete IP pool
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/network/arp:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - name: mac
+        in: query
+        required: true
+        description: MAC address (WAJIB untuk endpoint ini).
+        schema:
+          type: string
+          pattern: ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$
+          example: AA:BB:CC:DD:EE:FF
+    get:
+      tags:
+        - Network
+      summary: List ARP entries by MAC
+      description: Filter ARP entry berdasarkan MAC address. Query `mac` WAJIB.
+      responses:
+        '200':
+          description: ARP entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ARPEntryResponse'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+  /devices/{device_id}/network/arp/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - Network
+      summary: Delete ARP entry
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/network/dhcp-leases:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/MacQuery'
+    get:
+      tags:
+        - Network
+      summary: List DHCP leases
+      description: Filter `?mac=`.
+      responses:
+        '200':
+          description: Lease list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DHCPLeaseResponse'
+  /devices/{device_id}/network/dhcp-leases/count:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Network
+      summary: Count DHCP leases
+      responses:
+        '200':
+          description: Count
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CountResponse'
+  /devices/{device_id}/network/dhcp-leases/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - Network
+      summary: Delete DHCP lease
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/network/queues:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NameQuery'
+      - $ref: '#/components/parameters/DynamicQuery'
+    get:
+      tags:
+        - Network
+      summary: List simple queues
+      description: List `/queue/simple`. Filter `?name=` (exact) atau `?dynamic=false` (hanya manual).
+      responses:
+        '200':
+          description: Queue list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/QueueSimpleResponse'
+  /devices/{device_id}/network/queues/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - Network
+      summary: Delete queue
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/ppp/secrets:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - PPP
+      summary: List PPP secrets
+      responses:
+        '200':
+          description: Secret list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PPPSecretResponse'
+    post:
+      tags:
+        - PPP
+      summary: Create PPP secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PPPSecretCreateRequest'
+            examples:
+              pppoe_user:
+                summary: PPPoE user
+                value:
+                  name: pppoe-user01
+                  password: p4ssw0rd
+                  service: pppoe
+                  profile: default
+                  remote_address: 10.0.0.10
+                  comment: customer A
+      responses:
+        '201':
+          description: Secret created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/ppp/secrets/by-name/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NamePath'
+    get:
+      tags:
+        - PPP
+      summary: Get PPP secret by name
+      responses:
+        '200':
+          description: Secret detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PPPSecretResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/ppp/secrets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - PPP
+      summary: Get PPP secret by ID
+      responses:
+        '200':
+          description: Secret detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PPPSecretResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - PPP
+      summary: Update PPP secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PPPSecretUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - PPP
+      summary: Delete PPP secret
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/ppp/secrets/{id}/disabled:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+        - PPP
+      summary: Toggle PPP secret disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetBoolRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/ppp/profiles:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - PPP
+      summary: List PPP profiles
+      responses:
+        '200':
+          description: Profile list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PPPProfileResponse'
+    post:
+      tags:
+        - PPP
+      summary: Create PPP profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PPPProfileCreateRequest'
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IDResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+  /devices/{device_id}/ppp/profiles/by-name/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/NamePath'
+    get:
+      tags:
+        - PPP
+      summary: Get PPP profile by name
+      responses:
+        '200':
+          description: Profile detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PPPProfileResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/ppp/profiles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+        - PPP
+      summary: Get PPP profile by ID
+      responses:
+        '200':
+          description: Profile detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PPPProfileResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    put:
+      tags:
+        - PPP
+      summary: Update PPP profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PPPProfileUpdateRequest'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+    delete:
+      tags:
+        - PPP
+      summary: Delete PPP profile
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/ppp/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - PPP
+      summary: List active PPP sessions
+      responses:
+        '200':
+          description: Active session list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PPPActiveResponse'
+  /devices/{device_id}/ppp/active/{id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags:
+        - PPP
+      summary: Disconnect PPP session
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContentResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/stream/hotspot/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ModeQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream hotspot active sessions (SSE)
+      description: |
+        Server-Sent Events stream untuk session hotspot.
+
+        **Format event**:
+        ```
+        event: change
+        id: <event-id>
+        data: <HotspotActiveEvent JSON>
+
+        ```
+
+        **Default mode**: snapshot+follow. Subscribe akan kirim snapshot row
+        yang aktif sekarang, lalu follow delta. Pakai `?mode=follow-only`
+        untuk skip snapshot.
+
+        Broker auto-stop saat last subscriber leave; multi-subscriber per
+        topic share single backend stream ke router.
+
+        **Sentinel field**: `dead: true` artinya session terminate.
+        ID-nya tetap valid untuk cross-ref snapshot.
+      x-event-types:
+        - change
+      responses:
+        '200':
+          description: SSE stream (Content-Type text/event-stream)
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/HotspotActiveEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/hotspot/users:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ModeQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream hotspot users table (SSE)
+      description: |
+        SSE delta dari `/ip/hotspot/user/print follow`. Default mode mengirim
+        snapshot awal lalu delta; `?mode=follow-only` hanya delta baru.
+        Event `change` memakai payload `HotspotUserEvent`.
+      x-event-types:
+        - change
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/HotspotUserEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/hotspot/inactive:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Streaming
+      summary: Stream inactive hotspot users (SSE derived)
+      description: |
+        Derived stream dari enabled hotspot users minus active sessions. Event
+        `inactive` memakai action `added`, `removed`, atau `changed`.
+      x-event-types:
+        - inactive
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/HotspotInactiveEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/ppp/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Streaming
+      summary: Stream PPP active sessions (SSE)
+      description: |
+        SSE delta sesi PPP. Format identik dengan hotspot active:
+        `event: change` + `data: <PPPActiveEvent JSON>`. Sentinel
+        `dead: true` saat session terminate.
+      x-event-types:
+        - change
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PPPActiveEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/ppp/secrets:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/ModeQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream PPP secrets table (SSE)
+      description: |
+        SSE delta dari `/ppp/secret/print follow`. Default mode mengirim
+        snapshot awal lalu delta; `?mode=follow-only` hanya delta baru.
+        Event `change` memakai payload `PPPSecretEvent`.
+      x-event-types:
+        - change
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PPPSecretEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/ppp/inactive:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Streaming
+      summary: Stream inactive PPP secrets (SSE derived)
+      description: |
+        Derived stream dari enabled PPP secrets minus active sessions. Event
+        `inactive` memakai action `added`, `removed`, atau `changed`.
+      x-event-types:
+        - inactive
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PPPInactiveEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/log:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/TopicsQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream syslog (SSE)
+      description: |
+        Stream `/log/print follow`. Filter topik via `?topics=hotspot,info`
+        (comma-separated). Tanpa filter = topic `all`.
+
+        **Format**:
+        ```
+        event: log
+        id: <event-id>
+        data: <LogEvent JSON>
+
+        ```
+      x-event-types:
+        - log
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/LogEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/system/resource:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream resource snapshot (SSE polling)
+      description: |
+        Polling `/system/resource` per `?interval=` (default `2s`). Event
+        `resource` dengan payload `SystemResourceResponse` lengkap.
+      x-event-types:
+        - resource
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SystemResourceResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/network/interfaces/{name}/traffic:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - name: name
+        in: path
+        required: true
+        description: Nama interface (mis. `ether1`, `wlan1`).
+        schema:
+          type: string
+          example: ether1
+    get:
+      tags:
+        - Streaming
+      summary: Stream interface traffic (SSE inherent)
+      description: |
+        Inherent stream `/interface/monitor-traffic interface=<name>`.
+        Update natural per detik dari RouterOS. Event `traffic` dengan
+        payload bit/packet per detik.
+      x-event-types:
+        - traffic
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TrafficResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/network/interfaces/stats:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream interface stats (SSE polling)
+      description: |
+        Polling `/interface/print stats` per `?interval=` (default `2s`).
+        Event `stats` dengan counter byte/packet kumulatif sejak boot —
+        frontend hitung delta untuk plot rate.
+      x-event-types:
+        - stats
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/InterfaceStatsEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/network/queues/stats:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream queue stats (SSE polling)
+      description: |
+        Polling `/queue/simple/print stats` per `?interval=` (default `1s`).
+        Payload diparse ke `QueueStatsEvent` lengkap. Field counter tetap
+        memakai format RouterOS `"in/out"` saat RouterOS mengembalikannya
+        sebagai pasangan arah.
+      x-event-types:
+        - stats
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/QueueStatsEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/history/resource:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical system resource
+      description: |
+        InfluxDB query untuk data resource (CPU/memory/HDD) historis. Kolom
+        umum di tiap row: `time, cpu_load, free_memory, free_hdd_space`.
+        Bucket interval default `1m`.
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/history/interfaces:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical interface traffic
+      description: 'Kolom: `time, interface, rx_bytes, tx_bytes, rx_pps, tx_pps`.'
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/history/hotspot/users:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical hotspot user usage
+      description: 'Kolom: `time, user, profile, bytes_in_delta, bytes_out_delta`.'
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/history/hotspot/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical hotspot connect/disconnect events
+      description: 'Kolom: `time, user, event ("connect"|"disconnect"), session_id, mac, address`.'
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/history/ppp/active:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical PPP connect/disconnect events
+      description: 'Kolom: `time, user, event, address`.'
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/history/queues:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/FromQuery'
+      - $ref: '#/components/parameters/ToQuery'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - History
+      summary: Query historical queue statistics
+      description: 'Kolom: `time, queue, max_limit, bytes_in_delta, bytes_out_delta`.'
+      responses:
+        '200':
+          description: History rows
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HistoryRow'
+        '503':
+          $ref: '#/components/responses/ErrorServiceUnavailable'
+  /devices/{device_id}/reports/selling:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/MonthQuery'
+    get:
+      tags:
+        - Reports
+      summary: List transaksi penjualan voucher
+      description: |
+        Query database lokal (Postgres). Tetap berfungsi meskipun router
+        offline. Filter `?month=jan2026` (format mikhmon lowercase).
+      responses:
+        '200':
+          description: List transaksi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TransactionResponse'
+        '400':
+          $ref: '#/components/responses/ErrorBadRequest'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/reports/selling/today:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Reports
+      summary: Transaksi hari ini
+      description: Filter otomatis ke tanggal sekarang server (timezone server).
+      responses:
+        '200':
+          description: Transaksi hari ini
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReportTodayResponse'
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/reports/selling/summary:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/MonthQuery'
+      - $ref: '#/components/parameters/IncludeTransactionsQuery'
+    get:
+      tags:
+        - Reports
+      summary: Agregat penjualan bulanan
+      description: |
+        Hitung total count, total cost, total revenue, profit, dan breakdown
+        per profile / per sell-price. Default current month.
+
+        Set `?include_transactions=true` untuk include detail tiap transaksi
+        di response (berat — pakai untuk export/audit).
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ReportSummary'
+              examples:
+                summary_only:
+                  summary: Tanpa detail transaksi
+                  value:
+                    data:
+                      count: 142
+                      total_price: 1420000
+                      total_sell_price: 1704000
+                      profit: 284000
+                      by_profile:
+                        default: 100
+                        vip: 42
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+  /devices/{device_id}/reports/selling.csv:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/MonthQuery'
+      - $ref: '#/components/parameters/DateQuery'
+    get:
+      tags:
+        - Reports
+      summary: Export transaksi sebagai CSV
+      description: |
+        Download CSV file. Header: `sale_date, sale_time, username, profile,
+        price, sell_price, validity, mac, ip, comment`. Filter `?month=` atau
+        `?date=`.
+      responses:
+        '200':
+          description: CSV download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+                example: |
+                  sale_date,sale_time,username,profile,price,sell_price,validity,mac,ip,comment
+                  jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,expiry-auto
+        '404':
+          $ref: '#/components/responses/ErrorNotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token (HS256). Diperoleh via `POST /auth/login`.
+        Wajib di-include sebagai header `Authorization: Bearer <token>`
+        kecuali untuk endpoint public (login, refresh, logout, /healthz).
+  schemas:
+    Envelope:
+      type: object
+      description: Response envelope generik. Field `data` dan `error` saling eksklusif.
+      properties:
+        data:
+          description: Payload sukses. Tipe spesifik tergantung endpoint.
+        meta:
+          type: object
+          additionalProperties: true
+          description: Metadata opsional, biasanya berisi `count` untuk list.
+          example:
+            count: 47
+        error:
+          $ref: '#/components/schemas/ErrorPayload'
+    ErrorEnvelope:
+      type: object
+      description: Envelope untuk response error (status 4xx/5xx).
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorPayload'
+    ErrorPayload:
+      type: object
+      description: Detail error yang stabil — frontend bisa branch via `code`.
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Stable error code untuk branching di client.
+          enum:
+            - NOT_FOUND
+            - INVALID_ARGUMENT
+            - AMBIGUOUS
+            - VALIDATION
+            - TIMEOUT
+            - CANCELED
+            - INTERNAL
+            - DEVICE_NOT_FOUND
+            - SERVICE_UNAVAILABLE
+        message:
+          type: string
+          description: Pesan error human-readable.
+          example: user with id *99 not found
+        path:
+          type: string
+          description: Path request yang menghasilkan error.
+          example: /api/v1/devices/rb-main/hotspot/users/*99
+        details:
+          description: Payload tambahan (mis. validator detail). Tipe bebas.
+    CountResponse:
+      type: object
+      description: Body untuk endpoint count-only.
+      required:
+        - count
+      properties:
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 142
+    IDResponse:
+      type: object
+      description: Body untuk endpoint create yang hanya kembalikan `.id`.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: RouterOS internal ID (`.id`).
+          example: '*5'
+    ActionResponse:
+      type: object
+      description: Body untuk endpoint control (mis. reboot, shutdown).
+      required:
+        - action
+        - status
+      properties:
+        action:
+          type: string
+          example: reboot
+        status:
+          type: string
+          example: issued
+    BulkResult:
+      type: object
+      description: Hasil operasi bulk — berhasil dan gagal di-list eksplisit.
+      required:
+        - succeeded
+        - failed
+      properties:
+        succeeded:
+          type: array
+          items:
+            type: string
+          description: List ID yang berhasil di-proses.
+          example:
+            - '*1'
+            - '*2'
+            - '*3'
+        failed:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map dari ID ke pesan error per item.
+          example:
+            '*4': 'mikrotik: not found'
+            '*5': operation timed out
+    HealthStatus:
+      type: object
+      description: |
+        Status komposit service. `ok=true` artinya semua dependency yang relevan
+        (DB, device manager, optional InfluxDB) sehat. Status code HTTP juga 200
+        saat ok, 503 saat tidak ok.
+      required:
+        - ok
+        - db
+        - devices
+      properties:
+        ok:
+          type: boolean
+          example: true
+        db:
+          type: string
+          description: Status DB ping. `ok`, `skipped` (DB tidak di-config), atau pesan error.
+          example: ok
+        devices:
+          $ref: '#/components/schemas/DeviceHealthStat'
+        influx:
+          type: string
+          description: Status InfluxDB. Hanya muncul kalau Influx di-enable.
+          example: ok
+        sse_subscribers:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map topic SSE → jumlah subscriber aktif (hanya topic dengan subs>0).
+          example:
+            hotspot-active:rb-main: 2
+            log:all:rb-main: 1
+        sse_dropped:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: Map topic SSE → jumlah event yang di-drop karena subscriber lambat.
+          example:
+            hotspot-active:rb-main: 5
+    DeviceHealthStat:
+      type: object
+      description: Ringkasan koneksi router yang dikelola.
+      required:
+        - connected
+        - total
+      properties:
+        connected:
+          type: integer
+          example: 3
+        total:
+          type: integer
+          example: 4
+    DeviceResponse:
+      type: object
+      description: |
+        Representasi device (RouterOS instance) yang ter-register di service.
+        Password sengaja TIDAK di-expose; hanya disimpan di DB dan dikirim ke
+        router saat dial.
+      required:
+        - id
+        - slug
+        - display_name
+        - address
+        - username
+        - use_tls
+        - status
+        - expiry_check_interval
+        - active
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        slug:
+          type: string
+          description: Identifier unik. Dipakai di URL `/devices/{device_id}/...`.
+          example: rb-main
+        display_name:
+          type: string
+          example: RB Main Office
+        address:
+          type: string
+          description: host:port — `8728` untuk API, `8729` untuk API-SSL.
+          example: 192.168.88.1:8728
+        username:
+          type: string
+          example: admin
+        use_tls:
+          type: boolean
+          example: false
+        status:
+          type: string
+          description: Status koneksi terakhir.
+          enum:
+            - connected
+            - disconnected
+            - error
+          example: connected
+        last_seen:
+          type: string
+          format: date-time
+          nullable: true
+          description: Waktu terakhir status `connected` di-set.
+        last_error:
+          type: string
+          description: Pesan error terakhir (kosong kalau healthy).
+        expiry_check_interval:
+          type: string
+          description: Interval expiry-checker untuk device ini (Go duration).
+          example: 2m
+        active:
+          type: boolean
+          description: Kalau false, expiry checker & auto-reconnect dimatikan.
+        created_at:
+          type: string
+          format: date-time
+    DeviceCreateRequest:
+      type: object
+      description: Body POST /devices. Slug harus unik.
+      required:
+        - slug
+        - display_name
+        - address
+        - username
+        - password
+      properties:
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: rb-main
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: RB Main Office
+        address:
+          type: string
+          example: 192.168.88.1:8728
+        username:
+          type: string
+          example: admin
+        password:
+          type: string
+          format: password
+          example: secret123
+        use_tls:
+          type: boolean
+          default: false
+        expiry_check_interval:
+          type: string
+          description: Go duration. Default `2m` kalau kosong.
+          example: 2m
+    DeviceUpdateRequest:
+      type: object
+      description: Body PUT /devices/{device_id}. Semua field opsional (sparse update).
+      properties:
+        display_name:
+          type: string
+        address:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        use_tls:
+          type: boolean
+          nullable: true
+        expiry_check_interval:
+          type: string
+        active:
+          type: boolean
+          nullable: true
+    DeviceWriteResponse:
+      type: object
+      description: |
+        Response create/update. Kalau dial gagal (credential salah / router
+        unreachable), record tetap disimpan di DB tapi `warning` di-isi supaya
+        frontend bisa tampilkan notice tanpa kehilangan device.
+      required:
+        - device
+      properties:
+        device:
+          $ref: '#/components/schemas/DeviceResponse'
+        warning:
+          type: string
+          example: 'device saved but connection failed: dial tcp 192.168.88.1:8728: connect: no route to host'
+    SystemIdentityResponse:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Identitas router (`/system/identity`).
+          example: MikroTik
+    SystemResourceResponse:
+      type: object
+      description: Snapshot resource router (CPU, memori, HDD) dari `/system/resource`.
+      required:
+        - cpu_load
+        - free_memory
+        - total_memory
+        - free_hdd_space
+        - total_hdd_space
+      properties:
+        uptime:
+          type: string
+          example: 5d12h34m
+        version:
+          type: string
+          example: 7.13.5 (stable)
+        build_time:
+          type: string
+          example: Dec/05/2024 10:30:21
+        factory_software:
+          type: string
+          example: 6.45.9
+        board_name:
+          type: string
+          example: RB951G-2HnD
+        platform:
+          type: string
+          example: MikroTik
+        cpu:
+          type: string
+          example: ARM
+        cpu_count:
+          type: integer
+          example: 1
+        cpu_frequency:
+          type: integer
+          format: int64
+          example: 600
+        cpu_load:
+          type: integer
+          example: 12
+          description: Persen 0..100
+        free_memory:
+          type: integer
+          format: int64
+          example: 67108864
+          description: Byte
+        total_memory:
+          type: integer
+          format: int64
+          example: 134217728
+        free_hdd_space:
+          type: integer
+          format: int64
+          example: 100663296
+        total_hdd_space:
+          type: integer
+          format: int64
+          example: 134217728
+        architecture_name:
+          type: string
+          example: arm
+        write_sect_since_reboot:
+          type: integer
+          format: int64
+        bad_blocks:
+          type: string
+          example: 0%
+    SystemRouterboardResponse:
+      type: object
+      required:
+        - routerboard
+      properties:
+        routerboard:
+          type: boolean
+          example: true
+        model:
+          type: string
+          example: 951G-2HnD
+        board_name:
+          type: string
+          example: RB951G-2HnD
+        serial_number:
+          type: string
+          example: 1234567890AB
+        firmware_type:
+          type: string
+          example: ar9344
+        factory_firmware:
+          type: string
+          example: '3.41'
+        current_firmware:
+          type: string
+          example: '7.13'
+        upgrade_firmware:
+          type: string
+          example: '7.13'
+    SystemClockResponse:
+      type: object
+      required:
+        - time_zone_autodetect
+        - dst_active
+      properties:
+        time:
+          type: string
+          example: '10:30:21'
+        date:
+          type: string
+          example: may/19/2026
+        time_zone_name:
+          type: string
+          example: Asia/Jakarta
+        gmt_offset:
+          type: string
+          example: '+07:00'
+        time_zone_autodetect:
+          type: boolean
+        dst_active:
+          type: boolean
+    ScriptResponse:
+      type: object
+      required:
+        - id
+        - name
+        - run_count
+        - dont_require_permissions
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: on-login-user01
+        owner:
+          type: string
+          example: admin
+        source:
+          type: string
+          example: /log info "hello";
+        comment:
+          type: string
+        policy:
+          type: string
+          example: read,write,policy,test
+        run_count:
+          type: integer
+          example: 3
+        last_started:
+          type: string
+          example: may/19/2026 10:00:00
+        dont_require_permissions:
+          type: boolean
+    ScriptCreateRequest:
+      type: object
+      required:
+        - name
+        - source
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: on-login-user01
+        source:
+          type: string
+          minLength: 1
+          example: /log info "login user01";
+        comment:
+          type: string
+        owner:
+          type: string
+          example: admin
+        policy:
+          type: string
+          example: read,write,policy,test
+    ScriptUpdateRequest:
+      type: object
+      description: Sparse update — kosong = tidak di-ubah.
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+        comment:
+          type: string
+        owner:
+          type: string
+    SchedulerResponse:
+      type: object
+      required:
+        - id
+        - name
+        - disabled
+        - run_count
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: expiry-check-daily
+        start_date:
+          type: string
+          example: may/19/2026
+        start_time:
+          type: string
+          example: '00:00:00'
+        interval:
+          type: string
+          example: 1d
+        on_event:
+          type: string
+          example: /system/script run [find name=cleanup]
+        next_run:
+          type: string
+          example: may/20/2026 00:00:00
+        policy:
+          type: string
+          example: read,write,policy,test
+        disabled:
+          type: boolean
+        comment:
+          type: string
+        run_count:
+          type: integer
+    SchedulerCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: expiry-check-daily
+        on_event:
+          type: string
+          example: /system/script run [find name=cleanup]
+        start_date:
+          type: string
+          example: may/19/2026
+        start_time:
+          type: string
+          example: '00:00:00'
+        interval:
+          type: string
+          example: 1d
+        disabled:
+          type: boolean
+          nullable: true
+        comment:
+          type: string
+    SchedulerUpdateRequest:
+      type: object
+      description: Sparse update.
+      properties:
+        name:
+          type: string
+        on_event:
+          type: string
+        interval:
+          type: string
+        disabled:
+          type: boolean
+          nullable: true
+        comment:
+          type: string
+    LoggingAddHotspotDiskRequest:
+      type: object
+      description: |
+        Body opsional untuk POST /system/logging/hotspot-disk. Kalau body kosong,
+        prefix default `->` digunakan.
+      properties:
+        prefix:
+          type: string
+          example: '->'
+          description: Prefix untuk log entry yang di-write ke disk.
+    HotspotUserResponse:
+      type: object
+      description: |
+        Representasi 1 user hotspot. Password TIDAK di-expose. `limit_bytes_in/out`
+        adalah quota per-direction (RouterOS v7+); `limit_bytes_total` adalah
+        quota total (RouterOS v6 + v7).
+      required:
+        - id
+        - name
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: user01
+        profile:
+          type: string
+          example: default
+        server:
+          type: string
+          example: hotspot1
+        disabled:
+          type: boolean
+        comment:
+          type: string
+          example: jan/06/2099 14:32:01
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        address:
+          type: string
+          example: 10.0.0.5
+        email:
+          type: string
+          example: user01@example.com
+        routes:
+          type: string
+        limit_uptime:
+          type: string
+          example: 24h
+        limit_bytes_total:
+          type: integer
+          format: int64
+        limit_bytes_in:
+          type: integer
+          format: int64
+        limit_bytes_out:
+          type: integer
+          format: int64
+        bytes_in:
+          type: integer
+          format: int64
+        bytes_out:
+          type: integer
+          format: int64
+        uptime:
+          type: string
+          example: 1h23m45s
+    HotspotUserCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: user01
+        password:
+          type: string
+          maxLength: 128
+          format: password
+          example: p4ssw0rd
+        profile:
+          type: string
+          example: default
+        server:
+          type: string
+          example: all
+        disabled:
+          type: boolean
+          nullable: true
+        limit_uptime:
+          type: string
+          example: 24h
+        limit_bytes_total:
+          type: integer
+          format: int64
+          minimum: 0
+        limit_bytes_in:
+          type: integer
+          format: int64
+          minimum: 0
+        limit_bytes_out:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          example: jan/06/2099 14:32:01
+    HotspotUserUpdateRequest:
+      type: object
+      description: Sparse update. Field comment & mac_address bersifat nullable (kirim "" untuk kosongkan).
+      properties:
+        name:
+          type: string
+          maxLength: 128
+        password:
+          type: string
+          maxLength: 128
+          format: password
+        profile:
+          type: string
+        server:
+          type: string
+        disabled:
+          type: boolean
+          nullable: true
+        limit_uptime:
+          type: string
+        limit_bytes_total:
+          type: integer
+          format: int64
+          nullable: true
+        limit_bytes_in:
+          type: integer
+          format: int64
+          nullable: true
+        limit_bytes_out:
+          type: integer
+          format: int64
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+        mac_address:
+          type: string
+          nullable: true
+    HotspotProfileResponse:
+      type: object
+      required:
+        - id
+        - name
+        - shared_users
+        - add_mac_cookie
+        - transparent_proxy
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: default
+        address_pool:
+          type: string
+          example: hs-pool
+        rate_limit:
+          type: string
+          example: 2M/2M
+        shared_users:
+          type: integer
+          minimum: 0
+          example: 1
+        status_autorefresh:
+          type: string
+          example: 1m
+        on_login:
+          type: string
+          example: ':log info $user'
+        on_logout:
+          type: string
+        parent_queue:
+          type: string
+        idle_timeout:
+          type: string
+          example: 5m
+        keepalive_timeout:
+          type: string
+          example: 2m
+        session_timeout:
+          type: string
+          example: 1h
+        mac_cookie_timeout:
+          type: string
+          example: 3d
+        add_mac_cookie:
+          type: boolean
+        transparent_proxy:
+          type: boolean
+    HotspotProfileCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: vip-2m
+        address_pool:
+          type: string
+          example: hs-pool
+        rate_limit:
+          type: string
+          example: 2M/2M
+        shared_users:
+          type: integer
+          minimum: 0
+          example: 1
+        status_autorefresh:
+          type: string
+          example: 1m
+        on_login:
+          type: string
+        parent_queue:
+          type: string
+    HotspotProfileUpdateRequest:
+      type: object
+      description: Sparse update.
+      properties:
+        name:
+          type: string
+        address_pool:
+          type: string
+        rate_limit:
+          type: string
+        shared_users:
+          type: integer
+          minimum: 0
+          nullable: true
+        status_autorefresh:
+          type: string
+        on_login:
+          type: string
+          nullable: true
+        parent_queue:
+          type: string
+    HotspotProfileDeleteRequest:
+      type: object
+      description: |
+        Optional body untuk DELETE profile. Kalau `name` di-set, workflow akan
+        cleanup scheduler/script yang nama-nya match (cascade delete).
+      properties:
+        name:
+          type: string
+    HotspotActiveResponse:
+      type: object
+      description: Sesi hotspot yang sedang aktif (sudah login).
+      required:
+        - id
+        - user
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        user:
+          type: string
+          example: user01
+        address:
+          type: string
+          example: 10.0.0.5
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        server:
+          type: string
+          example: hotspot1
+        login_by:
+          type: string
+          example: http-pap
+        uptime:
+          type: string
+          example: 12m34s
+        bytes_in:
+          type: integer
+          format: int64
+        bytes_out:
+          type: integer
+          format: int64
+        packets_in:
+          type: integer
+          format: int64
+        packets_out:
+          type: integer
+          format: int64
+        idle_time:
+          type: string
+          example: 5s
+        session_time_left:
+          type: string
+          example: 47m
+        keepalive_timeout:
+          type: string
+        comment:
+          type: string
+    HotspotBindingResponse:
+      type: object
+      required:
+        - id
+        - type
+        - disabled
+        - bypassed
+      properties:
+        id:
+          type: string
+          example: '*1'
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        address:
+          type: string
+          example: 10.0.0.5
+        to_address:
+          type: string
+          example: 10.0.0.5
+        server:
+          type: string
+          example: all
+        type:
+          type: string
+          enum:
+            - regular
+            - bypassed
+            - blocked
+          example: regular
+        disabled:
+          type: boolean
+        bypassed:
+          type: boolean
+        comment:
+          type: string
+    HotspotHostResponse:
+      type: object
+      required:
+        - id
+        - authorized
+        - bypassed
+        - dynamic
+        - dhcp
+      properties:
+        id:
+          type: string
+        mac_address:
+          type: string
+        address:
+          type: string
+        to_address:
+          type: string
+        server:
+          type: string
+        authorized:
+          type: boolean
+        bypassed:
+          type: boolean
+        dynamic:
+          type: boolean
+        dhcp:
+          type: boolean
+        uptime:
+          type: string
+        idle_time:
+          type: string
+        keepalive_timeout:
+          type: string
+        bytes_in:
+          type: integer
+          format: int64
+        bytes_out:
+          type: integer
+          format: int64
+        comment:
+          type: string
+    HotspotCookieResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: '*1'
+        user:
+          type: string
+          example: user01
+        domain:
+          type: string
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        expires_in:
+          type: string
+          example: 23h
+    HotspotServerResponse:
+      type: object
+      required:
+        - id
+        - name
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: hotspot1
+        profile:
+          type: string
+          example: default
+        interface:
+          type: string
+          example: ether2
+        address_pool:
+          type: string
+          example: hs-pool
+        addresses_per_mac:
+          type: string
+          example: '2'
+        idle_timeout:
+          type: string
+          example: 5m
+        keepalive_timeout:
+          type: string
+        login_timeout:
+          type: string
+          example: 2m
+        disabled:
+          type: boolean
+    SetBoolRequest:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: boolean
+    SetStringRequest:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          minLength: 1
+          example: jan/06/2099 14:32:01
+    BulkIDsRequest:
+      type: object
+      required:
+        - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          minItems: 1
+          example:
+            - '*1'
+            - '*2'
+            - '*3'
+    SetBindingTypeRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - regular
+            - bypassed
+            - blocked
+          example: bypassed
+    VoucherGenerateRequest:
+      type: object
+      description: |
+        Body untuk generator batch voucher. Akan create N user (BatchSize) di
+        /ip/hotspot/user dengan username random dari Charset. Kalau Validity
+        di-set, comment di-stamp dengan tanggal expiry format Mikhmon
+        (`<mon>/dd/yyyy hh:mm:ss` lowercase).
+      required:
+        - length
+        - charset
+        - profile
+        - batch_size
+      properties:
+        server:
+          type: string
+          description: Default `all`.
+          example: all
+        user_mode:
+          type: string
+          enum:
+            - up
+            - vc
+          default: up
+          description: |
+            - `up`: user & password generated independen.
+            - `vc`: user = password (voucher code).
+        length:
+          type: integer
+          minimum: 4
+          maximum: 32
+          example: 8
+        prefix:
+          type: string
+          maxLength: 16
+          description: Prefix username (tidak masuk hitungan length).
+          example: vc-
+        charset:
+          type: string
+          enum:
+            - lower
+            - upper
+            - mixed
+            - number
+            - lower_number
+            - upper_number
+            - mixed_number
+          example: lower_number
+        profile:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: default
+        time_limit:
+          type: string
+          description: limit-uptime per user (RouterOS duration).
+          example: 24h
+        data_limit:
+          type: integer
+          format: int64
+          minimum: 0
+          description: limit-bytes-total per user.
+        comment:
+          type: string
+          maxLength: 128
+          description: Comment manual (akan dikombinasi dengan stamp validity).
+        validity:
+          type: string
+          description: |
+            Go duration (mis. `168h` untuk 7 hari). Kalau set, comment user akan
+            di-stamp `<expiry-date>` format mikhmon untuk diproses expiry service.
+          example: 168h
+        price:
+          type: integer
+          minimum: 0
+          description: Harga normal voucher (untuk laporan).
+          example: 10000
+        sell_price:
+          type: integer
+          minimum: 0
+          example: 12000
+        lock_to_mac:
+          type: boolean
+          description: Reserved — lock username ke MAC pertama yang login.
+        batch_size:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          example: 50
+    VoucherResponse:
+      type: object
+      required:
+        - id
+        - username
+        - password
+      properties:
+        id:
+          type: string
+          example: '*42'
+        username:
+          type: string
+          example: vc-a1b2c3d4
+        password:
+          type: string
+          format: password
+          example: x9y8z7w6
+    VoucherGenerateResponse:
+      type: object
+      description: |
+        Response body. Status 200 = semua voucher berhasil, 207 = partial
+        (`partial=true`, `error` berisi pesan). Voucher yang berhasil di-create
+        tetap valid di RouterOS — caller dapat memutuskan rollback manual via
+        bulk-delete.
+      required:
+        - vouchers
+        - count
+      properties:
+        vouchers:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoucherResponse'
+        count:
+          type: integer
+          description: Jumlah voucher yang berhasil di-create.
+          example: 50
+        partial:
+          type: boolean
+          description: True kalau response 207 Multi-Status.
+        error:
+          type: string
+          description: Pesan error saat partial.
+          example: 'UserAdd "vc-xx": mikrotik: duplicate name'
+    InterfaceResponse:
+      type: object
+      required:
+        - id
+        - name
+        - running
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: ether1
+        default_name:
+          type: string
+          example: ether1
+        type:
+          type: string
+          example: ether
+        mtu:
+          type: string
+          example: '1500'
+        actual_mtu:
+          type: integer
+          format: int64
+          example: 1500
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        last_link_up_time:
+          type: string
+        last_link_down_time:
+          type: string
+        link_downs:
+          type: integer
+          format: int64
+        running:
+          type: boolean
+        disabled:
+          type: boolean
+        comment:
+          type: string
+    QueueSimpleResponse:
+      type: object
+      description: Queue di `/queue/simple`.
+      required:
+        - id
+        - name
+        - disabled
+        - dynamic
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: <hotspot-user01>
+        target:
+          type: string
+          example: 10.0.0.5/32
+        max_limit:
+          type: string
+          example: 2M/2M
+        limit_at:
+          type: string
+        burst_limit:
+          type: string
+        parent:
+          type: string
+        priority:
+          type: string
+        bucket_size:
+          type: string
+        packet_marks:
+          type: string
+        queue:
+          type: string
+        disabled:
+          type: boolean
+        dynamic:
+          type: boolean
+          description: true = auto-generated oleh hotspot/PPP
+        comment:
+          type: string
+        bytes:
+          type: string
+          example: 1234/5678
+          description: Format RouterOS upload/download
+        packets:
+          type: string
+        rate:
+          type: string
+          example: 0/0
+    IPPoolResponse:
+      type: object
+      required:
+        - id
+        - name
+        - total
+        - used
+        - available
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: hs-pool
+        ranges:
+          type: string
+          example: 10.0.0.10-10.0.0.250
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 241
+        used:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 42
+        available:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 199
+        next_pool:
+          type: string
+        comment:
+          type: string
+    IPPoolCreateRequest:
+      type: object
+      required:
+        - name
+        - ranges
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: hs-pool
+        ranges:
+          type: string
+          minLength: 1
+          example: 10.0.0.10-10.0.0.250
+        next_pool:
+          type: string
+          example: backup-pool
+        comment:
+          type: string
+          example: hotspot pool
+    IPPoolUpdateRequest:
+      type: object
+      description: Semua field optional; field yang tidak dikirim tidak diubah.
+      properties:
+        name:
+          type: string
+          example: hs-pool-renamed
+        ranges:
+          type: string
+          example: 10.0.1.10-10.0.1.250
+        next_pool:
+          type: string
+          example: backup-pool
+        comment:
+          type: string
+          example: updated comment
+    ARPEntryResponse:
+      type: object
+      required:
+        - id
+        - dynamic
+        - disabled
+        - complete
+        - published
+        - invalid
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+          example: 10.0.0.5
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        interface:
+          type: string
+          example: ether2
+        dynamic:
+          type: boolean
+        disabled:
+          type: boolean
+        complete:
+          type: boolean
+        published:
+          type: boolean
+        invalid:
+          type: boolean
+        comment:
+          type: string
+    DHCPLeaseResponse:
+      type: object
+      required:
+        - id
+        - dynamic
+        - disabled
+      properties:
+        id:
+          type: string
+        address:
+          type: string
+          example: 10.0.0.5
+        mac_address:
+          type: string
+        client_id:
+          type: string
+        host_name:
+          type: string
+        server:
+          type: string
+          example: dhcp1
+        status:
+          type: string
+          example: bound
+        expires_after:
+          type: string
+          example: 23h
+        last_seen:
+          type: string
+        dynamic:
+          type: boolean
+        disabled:
+          type: boolean
+        comment:
+          type: string
+    TrafficResponse:
+      type: object
+      description: Snapshot traffic per detik (SSE payload).
+      required:
+        - rx_bits_per_sec
+        - tx_bits_per_sec
+        - rx_packets_per_sec
+        - tx_packets_per_sec
+      properties:
+        name:
+          type: string
+          example: ether1
+        rx_bits_per_sec:
+          type: integer
+          format: int64
+        tx_bits_per_sec:
+          type: integer
+          format: int64
+        rx_packets_per_sec:
+          type: integer
+          format: int64
+        tx_packets_per_sec:
+          type: integer
+          format: int64
+    PPPSecretResponse:
+      type: object
+      description: |
+        PPP secret (credential PPPoE/L2TP). Password TIDAK pernah di-expose
+        di response. Untuk toggle disabled, pakai PATCH /secrets/{id}/disabled.
+      required:
+        - id
+        - name
+        - limit_bytes_in
+        - limit_bytes_out
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: pppoe-user01
+        service:
+          type: string
+          example: pppoe
+        profile:
+          type: string
+          example: default
+        local_address:
+          type: string
+          example: 10.0.0.1
+        remote_address:
+          type: string
+          example: 10.0.0.10
+        limit_bytes_in:
+          type: integer
+          format: int64
+          example: 0
+          description: Quota inbound total bytes; 0 = unlimited.
+        limit_bytes_out:
+          type: integer
+          format: int64
+          example: 0
+          description: Quota outbound total bytes; 0 = unlimited.
+        last_logged_out:
+          type: string
+          example: may/20/2026 10:00:00
+        last_caller_id:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        last_disconnect_reason:
+          type: string
+          example: user-request
+        disabled:
+          type: boolean
+        comment:
+          type: string
+    PPPSecretCreateRequest:
+      type: object
+      description: |
+        Form field create PPP secret. Toggle disabled lewat
+        PATCH /secrets/{id}/disabled; comment di-set lewat UpdateRequest.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: pppoe-user01
+        password:
+          type: string
+          format: password
+        service:
+          type: string
+          example: pppoe
+          description: pppoe | l2tp | pptp | ovpn | sstp | any
+        profile:
+          type: string
+          example: default
+        local_address:
+          type: string
+          example: 10.0.0.1
+        remote_address:
+          type: string
+          example: 10.0.0.10
+        limit_bytes_in:
+          type: integer
+          format: int64
+          example: 0
+          description: 0 = unlimited.
+        limit_bytes_out:
+          type: integer
+          format: int64
+          example: 0
+    PPPSecretUpdateRequest:
+      type: object
+      description: |
+        Sparse update — field yang tidak di-set tidak diubah. limit_bytes_in /
+        limit_bytes_out pakai nullable untuk membedakan "tidak diubah" (null)
+        dengan "reset ke 0/unlimited" (0).
+      properties:
+        name:
+          type: string
+        password:
+          type: string
+          format: password
+        service:
+          type: string
+        profile:
+          type: string
+        local_address:
+          type: string
+        remote_address:
+          type: string
+        limit_bytes_in:
+          type: integer
+          format: int64
+          nullable: true
+        limit_bytes_out:
+          type: integer
+          format: int64
+          nullable: true
+    PPPProfileResponse:
+      type: object
+      required:
+        - id
+        - name
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: default
+        local_address:
+          type: string
+        remote_address:
+          type: string
+        rate_limit:
+          type: string
+          example: 10M/10M
+          description: Format rx/tx.
+        session_timeout:
+          type: string
+          example: 1h30m
+          description: RouterOS duration.
+        idle_timeout:
+          type: string
+          example: 10m
+        parent_queue:
+          type: string
+          example: global
+        on_up:
+          type: string
+          description: Script optional dijalankan saat session up.
+        on_down:
+          type: string
+          description: Script optional dijalankan saat session down.
+        disabled:
+          type: boolean
+        comment:
+          type: string
+    PPPProfileCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: vip
+        local_address:
+          type: string
+        remote_address:
+          type: string
+        rate_limit:
+          type: string
+          example: 10M/10M
+        session_timeout:
+          type: string
+          example: 1h30m
+        idle_timeout:
+          type: string
+          example: 10m
+        parent_queue:
+          type: string
+        on_up:
+          type: string
+        on_down:
+          type: string
+        disabled:
+          type: boolean
+          nullable: true
+        comment:
+          type: string
+    PPPProfileUpdateRequest:
+      type: object
+      description: Sparse update — field yang tidak di-set tidak diubah.
+      properties:
+        name:
+          type: string
+        local_address:
+          type: string
+        remote_address:
+          type: string
+        rate_limit:
+          type: string
+        session_timeout:
+          type: string
+          nullable: true
+        idle_timeout:
+          type: string
+          nullable: true
+        parent_queue:
+          type: string
+          nullable: true
+        on_up:
+          type: string
+          nullable: true
+        on_down:
+          type: string
+          nullable: true
+        disabled:
+          type: boolean
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+    PPPActiveResponse:
+      type: object
+      description: |
+        Session PPP aktif. Field paling penting untuk UI monitoring:
+        uptime, address, caller_id.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: pppoe-user01
+        service:
+          type: string
+          example: pppoe
+        caller_id:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        address:
+          type: string
+          example: 10.0.0.10
+        uptime:
+          type: string
+          example: 1h23m
+        limit_bytes_in:
+          type: integer
+          format: int64
+        limit_bytes_out:
+          type: integer
+          format: int64
+        comment:
+          type: string
+    HotspotActiveEvent:
+      type: object
+      description: |
+        Event delta dari /stream/hotspot/active. Kalau `dead=true`, session
+        telah terminate; ID-nya valid untuk cross-ref ke snapshot terakhir
+        tapi field lain mungkin kosong.
+      required:
+        - id
+        - user
+        - bytes_in
+        - bytes_out
+        - dead
+      properties:
+        id:
+          type: string
+          example: '*1'
+        user:
+          type: string
+          example: user01
+        address:
+          type: string
+          example: 10.0.0.5
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        server:
+          type: string
+          example: hotspot1
+        login_by:
+          type: string
+          example: http-pap
+        bytes_in:
+          type: integer
+          format: int64
+        bytes_out:
+          type: integer
+          format: int64
+        uptime:
+          type: string
+          example: 12s
+        dead:
+          type: boolean
+          description: true = session terminated.
+    PPPActiveEvent:
+      type: object
+      required:
+        - id
+        - name
+        - dead
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: pppoe-user01
+        service:
+          type: string
+        caller_id:
+          type: string
+        address:
+          type: string
+        uptime:
+          type: string
+        dead:
+          type: boolean
+          description: true = session terminated.
+    PPPSecretEvent:
+      type: object
+      description: |
+        Event delta dari /stream/ppp/secrets. Kalau `dead=true`, row secret
+        telah dihapus dari table.
+      required:
+        - id
+        - name
+        - limit_bytes_in
+        - limit_bytes_out
+        - disabled
+        - dead
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: pppoe-user01
+        service:
+          type: string
+          example: pppoe
+        profile:
+          type: string
+          example: default
+        limit_bytes_in:
+          type: integer
+          format: int64
+          example: 0
+        limit_bytes_out:
+          type: integer
+          format: int64
+          example: 0
+        last_logged_out:
+          type: string
+          example: may/20/2026 10:00:00
+        last_caller_id:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        last_disconnect_reason:
+          type: string
+          example: user-request
+        disabled:
+          type: boolean
+        comment:
+          type: string
+        dead:
+          type: boolean
+          description: true = row deleted.
+    HotspotUserEvent:
+      type: object
+      description: |
+        Event delta dari /stream/hotspot/users. Kalau `dead=true`, row user
+        telah dihapus dari table.
+      required:
+        - id
+        - name
+        - disabled
+        - dead
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: user01
+        profile:
+          type: string
+          example: default
+        mac_address:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        address:
+          type: string
+          example: 10.0.0.5
+        email:
+          type: string
+          example: user01@example.test
+        server:
+          type: string
+          example: hotspot1
+        disabled:
+          type: boolean
+        comment:
+          type: string
+        dead:
+          type: boolean
+          description: true = row deleted.
+    PPPInactiveEvent:
+      type: object
+      description: |
+        Derived inactive PPP event dari enabled secrets minus active sessions.
+        Field `address` = last-known IP dari /ppp/active (kosong kalau secret
+        belum pernah aktif sejak workflow start).
+      required:
+        - name
+        - action
+      properties:
+        name:
+          type: string
+          example: pppoe-user01
+        profile:
+          type: string
+          example: default
+        caller_id:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        last_caller_id:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        last_logged_out:
+          type: string
+          example: may/20/2026 10:00:00
+        last_disconnect_reason:
+          type: string
+          example: user-request
+        address:
+          type: string
+          example: 10.0.0.5
+          description: Last-known IP dari /ppp/active.
+        action:
+          type: string
+          enum:
+            - added
+            - removed
+            - changed
+          example: added
+    HotspotInactiveEvent:
+      type: object
+      description: Derived inactive hotspot event dari enabled users minus active sessions.
+      required:
+        - user
+        - action
+      properties:
+        user:
+          $ref: '#/components/schemas/HotspotUserEvent'
+        action:
+          type: string
+          enum:
+            - added
+            - removed
+            - changed
+          example: added
+    LogEvent:
+      type: object
+      description: Satu entry log dari /stream/log.
+      required:
+        - id
+        - time
+        - topics
+        - message
+      properties:
+        id:
+          type: string
+          example: '*1234'
+        time:
+          type: string
+          example: '10:30:21'
+        topics:
+          type: string
+          example: hotspot,info,account
+        message:
+          type: string
+          example: user01 logged in
+    InterfaceStatsEvent:
+      type: object
+      description: |
+        Stats interface polled per interval (default 2s) di /stream/network/interfaces/stats.
+        Counter kumulatif sejak boot; frontend hitung delta untuk plot.
+      required:
+        - id
+        - name
+        - type
+        - rx_byte
+        - tx_byte
+        - rx_packet
+        - tx_packet
+        - running
+        - disabled
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: ether1
+        type:
+          type: string
+          example: ether
+        rx_byte:
+          type: integer
+          format: int64
+        tx_byte:
+          type: integer
+          format: int64
+        rx_packet:
+          type: integer
+          format: int64
+        tx_packet:
+          type: integer
+          format: int64
+        running:
+          type: boolean
+        disabled:
+          type: boolean
+    QueueStatsEvent:
+      type: object
+      description: |
+        Stats queue per interval (default 1s) di /stream/network/queues/stats.
+        Payload sudah diparse dari domain.QueueSimpleWithStats; field counter
+        tetap string mengikuti format RouterOS.
+      required:
+        - id
+        - name
+        - target
+        - disabled
+        - dynamic
+        - bytes
+        - packets
+        - rate
+      properties:
+        id:
+          type: string
+          example: '*1'
+        name:
+          type: string
+          example: <hotspot-user01>
+        target:
+          type: string
+          example: 10.0.0.5/32
+        parent:
+          type: string
+        disabled:
+          type: boolean
+        dynamic:
+          type: boolean
+        comment:
+          type: string
+        bytes:
+          type: string
+          example: 1234/5678
+        packets:
+          type: string
+          example: 10/15
+        rate:
+          type: string
+          example: 200/300
+        total_rate:
+          type: string
+          example: '500'
+        packet_rate:
+          type: string
+          example: 1/2
+        total_packet_rate:
+          type: string
+          example: '3'
+        queued_bytes:
+          type: string
+          example: 0/0
+        total_queued_bytes:
+          type: string
+          example: '0'
+        queued_packets:
+          type: string
+          example: 0/0
+        total_queued_packets:
+          type: string
+          example: '0'
+        total_bytes:
+          type: string
+          example: '6801'
+        total_packets:
+          type: string
+          example: '25'
+        dropped:
+          type: string
+          example: 0/0
+        total_dropped:
+          type: string
+          example: '0'
+        max_limit:
+          type: string
+          example: 2M/2M
+    LogEntryResponse:
+      type: object
+      description: Satu entry log RouterOS dari /log/print (snapshot, bukan stream).
+      required:
+        - id
+        - message
+      properties:
+        id:
+          type: string
+          example: '*1234'
+        time:
+          type: string
+          example: '10:30:21'
+        topics:
+          type: string
+          description: Topik log (comma-separated). Mis. `hotspot,info,account`.
+          example: hotspot,info
+        message:
+          type: string
+          example: user01 logged in
+    HistoryRow:
+      type: object
+      description: |
+        Satu baris hasil query InfluxDB. Kolom bervariasi per endpoint:
+
+        - `/history/resource`: `time, cpu_load, free_memory, free_hdd_space`.
+        - `/history/interfaces`: `time, interface, rx_bytes, tx_bytes, rx_pps, tx_pps`.
+        - `/history/hotspot/users`: `time, user, profile, bytes_in_delta, bytes_out_delta`.
+        - `/history/hotspot/active`: `time, user, event ("connect"|"disconnect"), session_id, mac, address`.
+        - `/history/ppp/active`: `time, user, event, address`.
+        - `/history/queues`: `time, queue, max_limit, bytes_in_delta, bytes_out_delta`.
+
+        Skema dinamis (`additionalProperties: true`) supaya tidak berubah saat
+        kolom InfluxDB di-extend. Value bisa scalar (string/number/bool) atau
+        timestamp (RFC3339).
+      additionalProperties: true
+      example:
+        time: '2026-05-18T08:00:00Z'
+        cpu_load: 12
+        free_memory: 67108864
+        free_hdd_space: 100663296
+    TransactionResponse:
+      type: object
+      description: |
+        Satu row transaksi penjualan voucher (dicatat oleh expiry service mode
+        `remc`/`ntfc` saat voucher di-expire). Format `sale_date`/`sale_month`
+        mengikuti konvensi mikhmonv3 (lowercase month).
+      required:
+        - id
+        - sale_date
+        - sale_time
+        - sale_month
+        - username
+        - price
+        - sell_price
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 142
+        sale_date:
+          type: string
+          example: jan/05/2026
+        sale_time:
+          type: string
+          example: '10:30:21'
+        sale_month:
+          type: string
+          example: jan2026
+        username:
+          type: string
+          example: vc-a1b2c3d4
+        price:
+          type: integer
+          example: 10000
+        sell_price:
+          type: integer
+          example: 12000
+        ip:
+          type: string
+          example: 10.0.0.5
+        mac:
+          type: string
+          example: AA:BB:CC:DD:EE:FF
+        validity:
+          type: string
+          example: 168h
+        profile:
+          type: string
+          example: default
+        comment:
+          type: string
+          example: expiry-auto
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-01-05T10:30:21+07:00'
+    ReportSummary:
+      type: object
+      required:
+        - count
+        - total_price
+        - total_sell_price
+        - profit
+      properties:
+        count:
+          type: integer
+          example: 142
+        total_price:
+          type: integer
+          description: Total cost (`price` × count).
+          example: 1420000
+        total_sell_price:
+          type: integer
+          description: Total revenue (`sell_price` × count).
+          example: 1704000
+        profit:
+          type: integer
+          description: total_sell_price − total_price.
+          example: 284000
+        by_profile:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Count per profile name.
+          example:
+            default: 100
+            vip: 42
+        by_sell_price:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Count per sell-price bucket (key = harga sebagai string).
+          example:
+            '10000': 100
+            '20000': 42
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionResponse'
+          description: Detail tiap transaksi. Hanya di-isi kalau query `?include_transactions=true`.
+    ReportTodayResponse:
+      type: object
+      required:
+        - date
+        - count
+        - transactions
+      properties:
+        date:
+          type: string
+          example: may/19/2026
+        count:
+          type: integer
+          example: 5
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionResponse'
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          example: admin
+        password:
+          type: string
+          format: password
+          example: supersecretpw
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh token yang diterima saat login sebelumnya.
+    LogoutRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          description: |
+            JWT HS256 access token. Pakai di header `Authorization: Bearer <token>`.
+            TTL default 15 menit (lihat `JWT_ACCESS_TTL`).
+        refresh_token:
+          type: string
+          description: |
+            JWT HS256 refresh token (jti tersimpan di DB untuk rotation/revoke).
+            TTL default 7 hari (`JWT_REFRESH_TTL`).
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Sisa detik sampai access_token expire.
+          example: 900
+        access_expires_at:
+          type: string
+          format: date-time
+        refresh_expires_at:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserResponse'
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: admin
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+        role:
+          type: string
+          enum:
+            - admin
+            - operator
+            - viewer
+          example: admin
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UserCreateRequest:
+      type: object
+      required:
+        - username
+        - password
+        - role
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        role:
+          type: string
+          enum:
+            - admin
+            - operator
+            - viewer
+        active:
+          type: boolean
+          default: true
+    UserUpdateRequest:
+      type: object
+      description: |
+        Semua field opsional. Field yang tidak di-include atau null akan
+        dibiarkan unchanged. Ganti password atau ubah role/active akan
+        me-revoke semua refresh token user.
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        role:
+          type: string
+          enum:
+            - admin
+            - operator
+            - viewer
+        active:
+          type: boolean
+    MeResponse:
+      allOf:
+        - $ref: '#/components/schemas/UserResponse'
+    ProfileConfigResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        device_id:
+          type: integer
+          example: 1
+        profile_name:
+          type: string
+          example: default
+        expiry_mode:
+          type: string
+          enum:
+            - '0'
+            - rem
+            - ntf
+            - remc
+            - ntfc
+          description: |
+            Mode aksi saat user expired:
+            - `0`   = none / disable
+            - `rem` = hapus user
+            - `ntf` = set limit-uptime ke 0 + kick
+            - `remc`= hapus + catat transaksi
+            - `ntfc`= notice + catat transaksi
+          example: rem
+        validity:
+          type: string
+          description: |
+            Format RouterOS canonical (hasil `rosfmt.FormatDuration`). Saat
+            request, accept format apapun yang dikenali rosfmt (`168h`, `7d`,
+            `1w`, `1mo`, `1y`); server normalize sebelum simpan.
+          example: 1w
+        price:
+          type: integer
+          example: 10000
+        sell_price:
+          type: integer
+          example: 12000
+        lock_mac:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ProfileConfigUpsertRequest:
+      type: object
+      required:
+        - expiry_mode
+        - validity
+      properties:
+        expiry_mode:
+          type: string
+          enum:
+            - '0'
+            - rem
+            - ntf
+            - remc
+            - ntfc
+        validity:
+          type: string
+          description: |
+            Durasi paket. Accept RouterOS (`7d`, `1w`, `1mo`, `1y`) atau Go
+            (`168h`). Server normalize ke canonical RouterOS format saat simpan.
+          example: 7d
+        price:
+          type: integer
+          minimum: 0
+          example: 10000
+        sell_price:
+          type: integer
+          minimum: 0
+          example: 12000
+        lock_mac:
+          type: boolean
+          default: false
+  parameters:
+    DeviceIdPath:
+      name: device_id
+      in: path
+      required: true
+      description: Identifier device. Boleh numeric ID atau slug device (mis. `rb-main`).
+      schema:
+        type: string
+        example: rb-main
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: RouterOS internal ID (`.id`), biasanya format `*N` (mis. `*1`, `*2A`).
+      schema:
+        type: string
+        example: '*1'
+    NamePath:
+      name: name
+      in: path
+      required: true
+      description: Nama resource (user/profile/secret) untuk lookup by-name.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        example: user01
+    PrefixPath:
+      name: prefix
+      in: path
+      required: true
+      description: Prefix topik RouterOS log, mis. `hotspot`, `info`.
+      schema:
+        type: string
+        example: hotspot
+    CacheQuery:
+      name: cache
+      in: query
+      required: false
+      description: Aktifkan caching untuk endpoint GET ini. Default `false`.
+      schema:
+        type: boolean
+        default: false
+    TtlQuery:
+      name: ttl
+      in: query
+      required: false
+      description: TTL cache dalam format Go duration (mis. `60s`, `5m`). Hanya berlaku saat `cache=true`.
+      schema:
+        type: string
+        pattern: ^[0-9]+(ns|us|µs|ms|s|m|h)$
+        example: 60s
+    FromQuery:
+      name: from
+      in: query
+      required: false
+      description: Awal range waktu (RFC3339). Default `now-1h`.
+      schema:
+        type: string
+        format: date-time
+        example: '2026-05-18T08:00:00Z'
+    ToQuery:
+      name: to
+      in: query
+      required: false
+      description: Akhir range waktu (RFC3339). Default `now`.
+      schema:
+        type: string
+        format: date-time
+        example: '2026-05-18T09:00:00Z'
+    IntervalQuery:
+      name: interval
+      in: query
+      required: false
+      description: Interval bucket untuk agregasi atau polling (Go duration). Default tergantung endpoint (1m–2s).
+      schema:
+        type: string
+        pattern: ^[0-9]+(ns|us|µs|ms|s|m|h)$
+        example: 1m
+    MonthQuery:
+      name: month
+      in: query
+      required: false
+      description: Filter bulan untuk laporan transaksi, format `<bln>jjjj` lowercase (mis. `jan2026`).
+      schema:
+        type: string
+        pattern: ^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[0-9]{4}$
+        example: jan2026
+    DateQuery:
+      name: date
+      in: query
+      required: false
+      description: Filter tanggal untuk laporan transaksi, format mikhmon `<bln>/dd/yyyy` lowercase (mis. `jan/05/2026`).
+      schema:
+        type: string
+        example: jan/05/2026
+    MacQuery:
+      name: mac
+      in: query
+      required: false
+      description: Filter MAC address (case-insensitive). Pada `/network/arp` parameter ini WAJIB.
+      schema:
+        type: string
+        pattern: ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$
+        example: AA:BB:CC:DD:EE:FF
+    ServerQuery:
+      name: server
+      in: query
+      required: false
+      description: Filter nama hotspot server.
+      schema:
+        type: string
+        example: hotspot1
+    ProfileQuery:
+      name: profile
+      in: query
+      required: false
+      description: Filter nama profile.
+      schema:
+        type: string
+        example: default
+    CommentQuery:
+      name: comment
+      in: query
+      required: false
+      description: Filter nilai field comment.
+      schema:
+        type: string
+    UserQuery:
+      name: user
+      in: query
+      required: false
+      description: Filter berdasarkan username hotspot.
+      schema:
+        type: string
+        example: user01
+    TopicsQuery:
+      name: topics
+      in: query
+      required: false
+      description: Filter syslog topic (comma-separated). Mis. `hotspot,info`.
+      schema:
+        type: string
+        example: hotspot,info
+    ModeQuery:
+      name: mode
+      in: query
+      required: false
+      description: Mode streaming. `follow-only` = tanpa snapshot awal (event baru saja).
+      schema:
+        type: string
+        enum:
+          - follow-only
+    IncludeTransactionsQuery:
+      name: include_transactions
+      in: query
+      required: false
+      description: Kalau `true`, response summary mencakup detail tiap transaksi.
+      schema:
+        type: boolean
+        default: false
+    NameQuery:
+      name: name
+      in: query
+      required: false
+      description: Filter nama (exact match).
+      schema:
+        type: string
+    DynamicQuery:
+      name: dynamic
+      in: query
+      required: false
+      description: Filter queue dinamis (RouterOS auto-generated). `false` = hanya queue manual.
+      schema:
+        type: boolean
+    SourceQuery:
+      name: source
+      in: query
+      required: false
+      description: Filter script berdasarkan substring source code.
+      schema:
+        type: string
+    OwnerQuery:
+      name: owner
+      in: query
+      required: false
+      description: Filter script berdasarkan owner.
+      schema:
+        type: string
+  responses:
+    ErrorBadRequest:
+      description: Request tidak valid (parameter atau body salah).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            invalid_argument:
+              summary: Argumen invalid
+              value:
+                error:
+                  code: INVALID_ARGUMENT
+                  message: id tidak boleh kosong
+                  path: /api/v1/devices/rb-main/hotspot/users/
+    ErrorValidation:
+      description: Body request gagal validasi schema (gin binding).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            validation_failed:
+              summary: Field wajib tidak ada
+              value:
+                error:
+                  code: VALIDATION
+                  message: request validation failed
+                  path: /api/v1/devices/rb-main/hotspot/users
+                  details: 'Key: ''HotspotUserCreateRequest.Name'' Error:Field validation for ''Name'' failed on the ''required'' tag'
+    ErrorNotFound:
+      description: Resource yang dirujuk tidak ditemukan.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            user_not_found:
+              summary: User tidak ada
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: 'mikrotik: not found'
+                  path: /api/v1/devices/rb-main/hotspot/users/*99
+    ErrorDeviceNotFound:
+      description: Device tidak ditemukan atau tidak terhubung. Dikembalikan oleh DeviceMiddleware.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            device_offline:
+              summary: Device offline
+              value:
+                error:
+                  code: DEVICE_NOT_FOUND
+                  message: device not found or not connected
+                  path: /api/v1/devices/rb-main/system/identity
+    ErrorConflict:
+      description: Operasi konflik dengan state existing (mis. ambiguous match).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            ambiguous:
+              summary: Ambiguous match
+              value:
+                error:
+                  code: AMBIGUOUS
+                  message: 'mikrotik: ambiguous: multiple matches'
+                  path: /api/v1/devices/rb-main/hotspot/users/by-name/user01
+    ErrorTimeout:
+      description: Operasi melewati batas waktu (ctx deadline / 5xx upstream timeout).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            upstream_timeout:
+              summary: Router lambat respond
+              value:
+                error:
+                  code: TIMEOUT
+                  message: operation timed out
+                  path: /api/v1/devices/rb-main/hotspot/users
+    ErrorInternal:
+      description: Error internal server. Dipakai untuk uncategorized + panic recovery.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            internal:
+              summary: Unexpected error
+              value:
+                error:
+                  code: INTERNAL
+                  message: unexpected error during operation
+                  path: /api/v1/devices/rb-main/hotspot/users
+    ErrorServiceUnavailable:
+      description: Dependency external (InfluxDB / DB) sedang tidak available.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            influx_down:
+              summary: InfluxDB tidak terhubung
+              value:
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: history backend unavailable
+                  path: /api/v1/devices/rb-main/history/resource
+    ErrorUnauthorized:
+      description: |
+        Token JWT tidak ada / invalid / expired / wrong-type. Response menyertakan
+        header `WWW-Authenticate: Bearer realm="api"`.
+      headers:
+        WWW-Authenticate:
+          description: Bearer challenge
+          schema:
+            type: string
+            example: Bearer realm="api"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            missing:
+              summary: Header Authorization tidak ada
+              value:
+                error:
+                  code: UNAUTHORIZED
+                  message: missing or malformed Authorization header
+                  path: /api/v1/devices
+            expired:
+              summary: Access token expired
+              value:
+                error:
+                  code: TOKEN_EXPIRED
+                  message: token expired
+                  path: /api/v1/devices
+    ErrorForbidden:
+      description: |
+        Token valid tapi role tidak diizinkan mengakses endpoint ini
+        (mis. operator coba akses /auth/users yang admin-only).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            role_forbidden:
+              summary: Role tidak cukup
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: role not authorized for this action
+                  path: /api/v1/auth/users
+    ErrorRateLimit:
+      description: |
+        Terlalu banyak request. Response menyertakan header `Retry-After`
+        (detik). Berlaku untuk per-user (REST), per-IP (anon endpoint),
+        per-endpoint-heavy (voucher generate, bulk-delete, reboot, shutdown),
+        dan SSE subscriber cap (per-topic / per-device).
+      headers:
+        Retry-After:
+          description: Detik sebelum boleh retry
+          schema:
+            type: integer
+            example: 30
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            per_user:
+              summary: Per-user limit terlewat
+              value:
+                error:
+                  code: RATE_LIMIT
+                  message: too many requests, slow down
+                  path: /api/v1/devices
+                  details:
+                    retry_after_s: 30
+                    scope: user
+            sse_topic_cap:
+              summary: SSE per-topic subscriber cap terlewat
+              value:
+                error:
+                  code: RATE_LIMIT
+                  message: sse subscriber cap exceeded
+                  path: /api/v1/devices/1/stream/hotspot/active
+                  details:
+                    retry_after_s: 30
+                    scope: topic
+    NoContentResponse:
+      description: Operasi sukses tanpa body response (204 No Content).
