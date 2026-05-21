@@ -61,6 +61,8 @@ Konstanta filter:
 | Command | Fungsi |
 |---|---|
 | `/ip/hotspot/user/print` | `hotspot.Client.UserList` |
+| `/ip/hotspot/user/print follow` | `hotspot.Client.UserListStream` |
+| `/ip/hotspot/user/print follow-only` | `hotspot.Client.UserListStreamFollowOnly` |
 | `/ip/hotspot/user/print count-only=""` | `hotspot.Client.UserCount` |
 | `/ip/hotspot/user/print ?name=…` | `hotspot.Client.UserByName` |
 | `/ip/hotspot/user/print ?.id=…` | `hotspot.Client.UserByID` |
@@ -74,6 +76,7 @@ Konstanta filter:
 | `/ip/hotspot/user/set =limit-uptime=0 =comment=` | `hotspot.Client.UserResetUsage` |
 | `/ip/hotspot/user/remove` | `hotspot.Client.UserRemove` |
 | `/ip/hotspot/user/reset-counters` | `hotspot.Client.UserResetCounters` |
+| derived enabled `/ip/hotspot/user` minus `/ip/hotspot/active` | `workflows.Clients.HotspotInactiveStream` |
 
 ## §1.7 IP Hotspot User Profile
 
@@ -120,10 +123,16 @@ Konstanta filter:
 | Command | Fungsi |
 |---|---|
 | `/queue/simple/print` | `network.Client.QueueSimpleList` |
+| `/queue/simple/print stats interval=…` | `network.Client.QueueStatsStream` |
+| `/queue/simple/print stats interval=…` (parsed) | `network.Client.QueueStatsStreamParsed` |
 | `/queue/simple/print ?dynamic=false` | `network.Client.QueueSimpleStatic` |
 | `/queue/simple/print ?name=…` | `network.Client.QueueSimpleByName` |
 | `/queue/simple/remove` | `network.Client.QueueSimpleRemove` |
 | `/ip/pool/print` | `network.Client.IPPoolList` |
+| `/ip/pool/print ?name=…` | `network.Client.IPPoolByName` |
+| `/ip/pool/add` | `network.Client.IPPoolAdd` |
+| `/ip/pool/set` | `network.Client.IPPoolSet` |
+| `/ip/pool/remove` | `network.Client.IPPoolRemove` |
 | `/ip/arp/print ?mac-address=…` | `network.Client.ARPByMAC` |
 | `/ip/arp/remove` | `network.Client.ARPRemove` |
 | `/ip/dhcp-server/lease/print` | `network.Client.DHCPLeaseList` |
@@ -143,6 +152,8 @@ Konstanta filter:
 | Command | Fungsi |
 |---|---|
 | `/ppp/secret/print` | `ppp.Client.SecretList` |
+| `/ppp/secret/print follow` | `ppp.Client.SecretStream` |
+| `/ppp/secret/print follow-only` | `ppp.Client.SecretStreamFollowOnly` |
 | `/ppp/secret/print ?name=…` | `ppp.Client.SecretByName` |
 | `/ppp/secret/add` | `ppp.Client.SecretAdd` |
 | `/ppp/secret/set` | `ppp.Client.SecretSet` |
@@ -154,4 +165,7 @@ Konstanta filter:
 | `/ppp/profile/set` | `ppp.Client.ProfileSet` |
 | `/ppp/profile/remove` | `ppp.Client.ProfileRemove` |
 | `/ppp/active/print` | `ppp.Client.ActiveList` |
+| `/ppp/active/print follow` | `ppp.Client.ActiveStream` |
+| `/ppp/active/print follow-only` | `ppp.Client.ActiveStreamFollowOnly` |
 | `/ppp/active/remove` | `ppp.Client.ActiveRemove` (file PHP-nya ADA) |
+| derived enabled `/ppp/secret` minus `/ppp/active` | `workflows.Clients.PPPInactiveStream` |

@@ -4,7 +4,8 @@
 //
 // Konvensi:
 //
-//   - Workflow tidak menyimpan state — function pure terhadap *Clients.
+//   - Workflow command tidak menyimpan state — function pure terhadap *Clients.
+//     Workflow stream derivatif boleh menyimpan state in-memory per listener.
 //   - Error pada satu step menghentikan cascade (fail-fast). Step yang
 //     sudah berhasil tidak di-rollback (RouterOS API tidak transactional).
 //   - Workflow di-test secara live ke router via build tag `integration`.
@@ -14,6 +15,7 @@ import (
 	"github.com/quiqxiq/roslib"
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/hotspot"
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/network"
+	"github.com/quiqxiq/roslib-mikhmon/mikrotik/ppp"
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/system"
 )
 
@@ -24,6 +26,7 @@ type Clients struct {
 	System  *system.Client
 	Hotspot *hotspot.Client
 	Network *network.Client
+	PPP     *ppp.Client
 }
 
 // New membangun Clients dari *roslib.Device. Caller biasanya dapat dev
@@ -33,5 +36,6 @@ func New(dev *roslib.Device) *Clients {
 		System:  system.New(dev),
 		Hotspot: hotspot.New(dev),
 		Network: network.New(dev),
+		PPP:     ppp.New(dev),
 	}
 }

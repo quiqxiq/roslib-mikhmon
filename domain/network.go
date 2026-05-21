@@ -18,18 +18,35 @@ type QueueSimple struct {
 	Comment     string
 
 	// Stats fields (di-isi saat print biasa, format string "in/out").
-	Bytes   string
-	Packets string
-	Rate    string
+	Bytes              string
+	Packets            string
+	Rate               string
+	TotalRate          string
+	PacketRate         string
+	TotalPacketRate    string
+	QueuedBytes        string
+	TotalQueuedBytes   string
+	QueuedPackets      string
+	TotalQueuedPackets string
+	TotalBytes         string
+	TotalPackets       string
+	Dropped            string
+	TotalDropped       string
 }
+
+// QueueSimpleWithStats = row /queue/simple/print stats interval=<d> (analisis §1.10).
+type QueueSimpleWithStats = QueueSimple
 
 // IPPool = row /ip/pool/print.
 type IPPool struct {
-	ID       string
-	Name     string
-	Ranges   string
-	NextPool string
-	Comment  string
+	ID        string
+	Name      string
+	Ranges    string
+	Total     int64
+	Used      int64
+	Available int64
+	NextPool  string
+	Comment   string
 }
 
 // ARPEntry = row /ip/arp/print.
@@ -48,35 +65,35 @@ type ARPEntry struct {
 
 // DHCPLease = row /ip/dhcp-server/lease/print.
 type DHCPLease struct {
-	ID            string
-	Address       string
-	MACAddress    string
-	ClientID      string
-	HostName      string
-	Server        string
-	Status        string
-	ExpiresAfter  string
-	LastSeen      string
-	Dynamic       bool
-	Disabled      bool
-	Comment       string
+	ID           string
+	Address      string
+	MACAddress   string
+	ClientID     string
+	HostName     string
+	Server       string
+	Status       string
+	ExpiresAfter string
+	LastSeen     string
+	Dynamic      bool
+	Disabled     bool
+	Comment      string
 }
 
 // Interface = row /interface/print.
 type Interface struct {
-	ID                string
-	Name              string
-	DefaultName       string
-	Type              string
-	MTU               string // bisa "auto" atau angka, simpan sebagai string
-	ActualMTU         int64
-	MACAddress        string
-	LastLinkUpTime    string
-	LastLinkDownTime  string
-	LinkDowns         int64
-	Running           bool
-	Disabled          bool
-	Comment           string
+	ID               string
+	Name             string
+	DefaultName      string
+	Type             string
+	MTU              string // bisa "auto" atau angka, simpan sebagai string
+	ActualMTU        int64
+	MACAddress       string
+	LastLinkUpTime   string
+	LastLinkDownTime string
+	LinkDowns        int64
+	Running          bool
+	Disabled         bool
+	Comment          string
 }
 
 // TrafficSnapshot = hasil /interface/monitor-traffic once="".
@@ -113,23 +130,23 @@ type PPPSecret struct {
 
 // PPPProfile = row /ppp/profile/print.
 type PPPProfile struct {
-	ID              string
-	Name            string
-	LocalAddr       string
-	RemoteAddr      string
-	RateLimit       string
-	DNSServer       string
-	Bridge          string
-	ParentQueue     string
-	IdleTimeout     string
-	SessionTimeout  string
-	OnUp            string
-	OnDown          string
-	OnlyOne         string // "default" | "yes" | "no"
-	UseCompression  string // "default" | "yes" | "no"
-	UseEncryption   string // "default" | "yes" | "no"
-	ChangeTCPMSS    string // "default" | "yes" | "no"
-	Comment         string
+	ID             string
+	Name           string
+	LocalAddr      string
+	RemoteAddr     string
+	RateLimit      string
+	DNSServer      string
+	Bridge         string
+	ParentQueue    string
+	IdleTimeout    string
+	SessionTimeout string
+	OnUp           string
+	OnDown         string
+	OnlyOne        string // "default" | "yes" | "no"
+	UseCompression string // "default" | "yes" | "no"
+	UseEncryption  string // "default" | "yes" | "no"
+	ChangeTCPMSS   string // "default" | "yes" | "no"
+	Comment        string
 }
 
 // PPPActive = row /ppp/active/print.

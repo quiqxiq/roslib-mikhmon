@@ -52,28 +52,43 @@ func (c *Client) QueueSimpleRemove(ctx context.Context, id string) error {
 	return err
 }
 
+func sentenceToQueue(s *roslib.Sentence) domain.QueueSimple {
+	return domain.QueueSimple{
+		ID:                 s.Get(".id"),
+		Name:               s.Get("name"),
+		Target:             s.Get("target"),
+		MaxLimit:           s.Get("max-limit"),
+		LimitAt:            s.Get("limit-at"),
+		BurstLimit:         s.Get("burst-limit"),
+		Parent:             s.Get("parent"),
+		Priority:           s.Get("priority"),
+		BucketSize:         s.Get("bucket-size"),
+		PacketMarks:        s.Get("packet-marks"),
+		Queue:              s.Get("queue"),
+		Disabled:           s.BoolOr("disabled", false),
+		Dynamic:            s.BoolOr("dynamic", false),
+		Comment:            s.Get("comment"),
+		Bytes:              s.Get("bytes"),
+		Packets:            s.Get("packets"),
+		Rate:               s.Get("rate"),
+		TotalRate:          s.Get("total-rate"),
+		PacketRate:         s.Get("packet-rate"),
+		TotalPacketRate:    s.Get("total-packet-rate"),
+		QueuedBytes:        s.Get("queued-bytes"),
+		TotalQueuedBytes:   s.Get("total-queued-bytes"),
+		QueuedPackets:      s.Get("queued-packets"),
+		TotalQueuedPackets: s.Get("total-queued-packets"),
+		TotalBytes:         s.Get("total-bytes"),
+		TotalPackets:       s.Get("total-packets"),
+		Dropped:            s.Get("dropped"),
+		TotalDropped:       s.Get("total-dropped"),
+	}
+}
+
 func sentencesToQueues(rows []*roslib.Sentence) []domain.QueueSimple {
 	out := make([]domain.QueueSimple, 0, len(rows))
 	for _, s := range rows {
-		out = append(out, domain.QueueSimple{
-			ID:          s.Get(".id"),
-			Name:        s.Get("name"),
-			Target:      s.Get("target"),
-			MaxLimit:    s.Get("max-limit"),
-			LimitAt:     s.Get("limit-at"),
-			BurstLimit:  s.Get("burst-limit"),
-			Parent:      s.Get("parent"),
-			Priority:    s.Get("priority"),
-			BucketSize:  s.Get("bucket-size"),
-			PacketMarks: s.Get("packet-marks"),
-			Queue:       s.Get("queue"),
-			Disabled:    s.BoolOr("disabled", false),
-			Dynamic:     s.BoolOr("dynamic", false),
-			Comment:     s.Get("comment"),
-			Bytes:       s.Get("bytes"),
-			Packets:     s.Get("packets"),
-			Rate:        s.Get("rate"),
-		})
+		out = append(out, sentenceToQueue(s))
 	}
 	return out
 }
