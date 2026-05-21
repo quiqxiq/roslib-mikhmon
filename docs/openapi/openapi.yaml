@@ -257,6 +257,10 @@ paths:
     $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1interfaces'
   /devices/{device_id}/network/pools:
     $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1pools'
+  /devices/{device_id}/network/pools/by-name/{name}:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1pools~1by-name~1{name}'
+  /devices/{device_id}/network/pools/{id}:
+    $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1pools~1{id}'
   /devices/{device_id}/network/arp:
     $ref: './paths/network.yaml#/~1devices~1{device_id}~1network~1arp'
   /devices/{device_id}/network/arp/{id}:
@@ -293,8 +297,16 @@ paths:
 
   /devices/{device_id}/stream/hotspot/active:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1hotspot~1active'
+  /devices/{device_id}/stream/hotspot/users:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1hotspot~1users'
+  /devices/{device_id}/stream/hotspot/inactive:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1hotspot~1inactive'
   /devices/{device_id}/stream/ppp/active:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1ppp~1active'
+  /devices/{device_id}/stream/ppp/secrets:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1ppp~1secrets'
+  /devices/{device_id}/stream/ppp/inactive:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1ppp~1inactive'
   /devices/{device_id}/stream/log:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1log'
   /devices/{device_id}/stream/system/resource:
@@ -399,6 +411,8 @@ components:
     InterfaceResponse:         { $ref: './schemas/network.yaml#/InterfaceResponse' }
     QueueSimpleResponse:       { $ref: './schemas/network.yaml#/QueueSimpleResponse' }
     IPPoolResponse:            { $ref: './schemas/network.yaml#/IPPoolResponse' }
+    IPPoolCreateRequest:       { $ref: './schemas/network.yaml#/IPPoolCreateRequest' }
+    IPPoolUpdateRequest:       { $ref: './schemas/network.yaml#/IPPoolUpdateRequest' }
     ARPEntryResponse:          { $ref: './schemas/network.yaml#/ARPEntryResponse' }
     DHCPLeaseResponse:         { $ref: './schemas/network.yaml#/DHCPLeaseResponse' }
     TrafficResponse:           { $ref: './schemas/network.yaml#/TrafficResponse' }
@@ -415,6 +429,10 @@ components:
     # Stream events
     HotspotActiveEvent:        { $ref: './schemas/stream-events.yaml#/HotspotActiveEvent' }
     PPPActiveEvent:            { $ref: './schemas/stream-events.yaml#/PPPActiveEvent' }
+    PPPSecretEvent:            { $ref: './schemas/stream-events.yaml#/PPPSecretEvent' }
+    HotspotUserEvent:          { $ref: './schemas/stream-events.yaml#/HotspotUserEvent' }
+    PPPInactiveEvent:          { $ref: './schemas/stream-events.yaml#/PPPInactiveEvent' }
+    HotspotInactiveEvent:      { $ref: './schemas/stream-events.yaml#/HotspotInactiveEvent' }
     LogEvent:                  { $ref: './schemas/stream-events.yaml#/LogEvent' }
     InterfaceStatsEvent:       { $ref: './schemas/stream-events.yaml#/InterfaceStatsEvent' }
     QueueStatsEvent:           { $ref: './schemas/stream-events.yaml#/QueueStatsEvent' }

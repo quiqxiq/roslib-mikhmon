@@ -41,13 +41,45 @@ QueueSimpleResponse:
 
 IPPoolResponse:
   type: object
-  required: [id, name]
+  required: [id, name, total, used, available]
   properties:
     id:        { type: string, example: "*1" }
     name:      { type: string, example: "hs-pool" }
     ranges:    { type: string, example: "10.0.0.10-10.0.0.250" }
+    total:     { type: integer, format: int64, minimum: 0, example: 241 }
+    used:      { type: integer, format: int64, minimum: 0, example: 42 }
+    available: { type: integer, format: int64, minimum: 0, example: 199 }
     next_pool: { type: string }
     comment:   { type: string }
+
+IPPoolCreateRequest:
+  type: object
+  required: [name, ranges]
+  properties:
+    name:
+      type: string
+      minLength: 1
+      maxLength: 128
+      example: "hs-pool"
+    ranges:
+      type: string
+      minLength: 1
+      example: "10.0.0.10-10.0.0.250"
+    next_pool: { type: string, example: "backup-pool" }
+    comment:   { type: string, example: "hotspot pool" }
+
+IPPoolUpdateRequest:
+  type: object
+  description: Semua field optional; field yang tidak dikirim tidak diubah.
+  properties:
+    name:
+      type: string
+      example: "hs-pool-renamed"
+    ranges:
+      type: string
+      example: "10.0.1.10-10.0.1.250"
+    next_pool: { type: string, example: "backup-pool" }
+    comment:   { type: string, example: "updated comment" }
 
 ARPEntryResponse:
   type: object

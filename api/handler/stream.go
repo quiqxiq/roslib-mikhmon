@@ -15,6 +15,7 @@ import (
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/ppp"
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/syslog"
 	"github.com/quiqxiq/roslib-mikhmon/mikrotik/system"
+	"github.com/quiqxiq/roslib-mikhmon/workflows"
 )
 
 // Stream meng-handle semua endpoint SSE. Pakai sse.Hub untuk broker
@@ -26,10 +27,11 @@ type Stream struct {
 	Net  *network.Client
 	PPP  *ppp.Client
 	Logs *syslog.Client
+	WF   *workflows.Clients
 }
 
-func NewStream(hub *sse.Hub, hot *hotspot.Client, sys *system.Client, net *network.Client, pp *ppp.Client, log *syslog.Client) *Stream {
-	return &Stream{Hub: hub, Hot: hot, Sys: sys, Net: net, PPP: pp, Logs: log}
+func NewStream(hub *sse.Hub, hot *hotspot.Client, sys *system.Client, net *network.Client, pp *ppp.Client, log *syslog.Client, wf *workflows.Clients) *Stream {
+	return &Stream{Hub: hub, Hot: hot, Sys: sys, Net: net, PPP: pp, Logs: log, WF: wf}
 }
 
 func (s *Stream) Register(g *gin.RouterGroup) {
@@ -37,10 +39,14 @@ func (s *Stream) Register(g *gin.RouterGroup) {
 	// agar setiap device mendapat stream-nya sendiri.
 	mk := func(c *gin.Context) *Stream {
 		cs := mustClients(c)
-		return NewStream(s.Hub, cs.Hot, cs.Sys, cs.Net, cs.PPP, cs.Log)
+		return NewStream(s.Hub, cs.Hot, cs.Sys, cs.Net, cs.PPP, cs.Log, cs.WF)
 	}
 	g.GET("/stream/hotspot/active", func(c *gin.Context) { mk(c).HotspotActive(c) })
+	g.GET("/stream/hotspot/users", func(c *gin.Context) { mk(c).HotspotUsers(c) })
+	g.GET("/stream/hotspot/inactive", func(c *gin.Context) { mk(c).HotspotInactive(c) })
 	g.GET("/stream/ppp/active", func(c *gin.Context) { mk(c).PPPActive(c) })
+	g.GET("/stream/ppp/secrets", func(c *gin.Context) { mk(c).PPPSecrets(c) })
+	g.GET("/stream/ppp/inactive", func(c *gin.Context) { mk(c).PPPInactive(c) })
 	g.GET("/stream/log", func(c *gin.Context) { mk(c).Log(c) })
 	g.GET("/stream/system/resource", func(c *gin.Context) { mk(c).SystemResource(c) })
 	g.GET("/stream/network/interfaces/:name/traffic", func(c *gin.Context) { mk(c).InterfaceTraffic(c) })
@@ -76,6 +82,56 @@ func (s *Stream) HotspotActive(c *gin.Context) {
 	sse.Stream(c, broker)
 }
 
+// HotspotUsers — /stream/hotspot/users (?mode=follow-only opsional) → §1.6.
+func (s *Stream) HotspotUsers(c *gin.Context) {
+	mode := c.Query("mode")
+	base := sse.TopicHotspotUser
+	if mode == "follow-only" {
+		base = sse.TopicHotspotUserFollowOnly
+	}
+	topic := deviceTopic(c, base)
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			handler := func(ev hotspot.UserEvent) {
+				b.Publish(sse.Event{Type: "change", Data: dto.FromDomainHotspotUserEvent(ev.User, ev.Dead)})
+			}
+			if mode == "follow-only" {
+				return s.Hot.UserListStreamFollowOnly(topic, handler)
+			}
+			return s.Hot.UserListStream(topic, handler)
+		},
+		func() { s.Hot.StopUserListStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// HotspotInactive — /stream/hotspot/inactive → §1.6, §1.8, §4.
+func (s *Stream) HotspotInactive(c *gin.Context) {
+	topic := deviceTopic(c, sse.TopicHotspotInactive)
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.WF.HotspotInactiveStream(topic, func(ev workflows.HotspotInactiveEvent) {
+				b.Publish(sse.Event{Type: "inactive", Data: dto.HotspotInactiveEvent{
+					User:   dto.FromDomainHotspotUserEvent(ev.User, false),
+					Action: ev.Action,
+				}})
+			})
+		},
+		func() { s.WF.StopHotspotInactiveStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
 // PPPActive — /stream/ppp/active.
 func (s *Stream) PPPActive(c *gin.Context) {
 	topic := deviceTopic(c, sse.TopicPPPActive)
@@ -91,6 +147,56 @@ func (s *Stream) PPPActive(c *gin.Context) {
 			})
 		},
 		func() { s.PPP.StopActiveStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// PPPSecrets — /stream/ppp/secrets (?mode=follow-only opsional) → §1.12.
+func (s *Stream) PPPSecrets(c *gin.Context) {
+	mode := c.Query("mode")
+	base := sse.TopicPPPSecret
+	if mode == "follow-only" {
+		base = sse.TopicPPPSecretFollowOnly
+	}
+	topic := deviceTopic(c, base)
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			handler := func(ev ppp.SecretEvent) {
+				b.Publish(sse.Event{Type: "change", Data: dto.FromDomainPPPSecretEvent(ev.Secret, ev.Dead)})
+			}
+			if mode == "follow-only" {
+				return s.PPP.SecretStreamFollowOnly(topic, handler)
+			}
+			return s.PPP.SecretStream(topic, handler)
+		},
+		func() { s.PPP.StopSecretStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// PPPInactive — /stream/ppp/inactive → §1.12, §4.
+func (s *Stream) PPPInactive(c *gin.Context) {
+	topic := deviceTopic(c, sse.TopicPPPInactive)
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.WF.PPPInactiveStream(topic, func(ev workflows.PPPInactiveEvent) {
+				b.Publish(sse.Event{Type: "inactive", Data: dto.PPPInactiveEvent{
+					Secret: dto.FromDomainPPPSecretEvent(ev.Secret, false),
+					Action: ev.Action,
+				}})
+			})
+		},
+		func() { s.WF.StopPPPInactiveStream(topic) },
 	)
 	sse.Stream(c, broker)
 }
@@ -192,11 +298,8 @@ func (s *Stream) QueueStats(c *gin.Context) {
 	defer release()
 	broker := s.Hub.GetOrCreate(topic,
 		func(b *sse.Broker) error {
-			return s.Net.QueueStatsStream(topic, interval, func(sen *roslib.Sentence) {
-				if sen.Word() != "!re" {
-					return
-				}
-				b.Publish(sse.Event{Type: "stats", Data: sentenceToQueueMap(sen)})
+			return s.Net.QueueStatsStreamParsed(topic, interval, func(q network.QueueSimpleWithStats) {
+				b.Publish(sse.Event{Type: "stats", Data: dto.FromDomainQueueStats(q)})
 			})
 		},
 		func() { s.Net.StopStream(topic) },

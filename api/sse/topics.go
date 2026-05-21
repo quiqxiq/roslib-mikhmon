@@ -7,6 +7,16 @@ const (
 	TopicHotspotActive           = "hotspot-active"
 	TopicHotspotActiveFollowOnly = "hotspot-active-follow-only"
 	TopicPPPActive               = "ppp-active"
+
+	// Tabel follow streams (analisis §1.6, §1.12).
+	TopicHotspotUser           = "hotspot-user"
+	TopicHotspotUserFollowOnly = "hotspot-user-follow-only"
+	TopicPPPSecret             = "ppp-secret"
+	TopicPPPSecretFollowOnly   = "ppp-secret-follow-only"
+
+	// Derived inactive streams (analisis §4 — workflows).
+	TopicHotspotInactive = "hotspot-inactive"
+	TopicPPPInactive     = "ppp-inactive"
 )
 
 // TopicLog membentuk topic untuk subscription /log/print follow dengan

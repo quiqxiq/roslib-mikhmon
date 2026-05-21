@@ -1,4 +1,4 @@
-# Typed payload untuk 5 SSE stream. Tiap object adalah body satu event
+# Typed payload untuk SSE stream. Tiap object adalah body satu event
 # `data:` di stream. Frontend parse via `JSON.parse(event.data)`.
 
 HotspotActiveEvent:
@@ -34,6 +34,66 @@ PPPActiveEvent:
     uptime:    { type: string }
     dead:      { type: boolean, description: "true = session terminated." }
 
+PPPSecretEvent:
+  type: object
+  description: |
+    Event delta dari /stream/ppp/secrets. Kalau `dead=true`, row secret
+    telah dihapus dari table.
+  required: [id, name, disabled, dead]
+  properties:
+    id:             { type: string, example: "*1" }
+    name:           { type: string, example: "pppoe-user01" }
+    service:        { type: string, example: "pppoe" }
+    profile:        { type: string, example: "default" }
+    local_address:  { type: string, example: "10.0.0.1" }
+    remote_address: { type: string, example: "10.0.0.5" }
+    caller_id:      { type: string }
+    disabled:       { type: boolean }
+    comment:        { type: string }
+    dead:           { type: boolean, description: "true = row deleted." }
+
+HotspotUserEvent:
+  type: object
+  description: |
+    Event delta dari /stream/hotspot/users. Kalau `dead=true`, row user
+    telah dihapus dari table.
+  required: [id, name, disabled, dead]
+  properties:
+    id:          { type: string, example: "*1" }
+    name:        { type: string, example: "user01" }
+    profile:     { type: string, example: "default" }
+    mac_address: { type: string, example: "AA:BB:CC:DD:EE:FF" }
+    address:     { type: string, example: "10.0.0.5" }
+    email:       { type: string, example: "user01@example.test" }
+    server:      { type: string, example: "hotspot1" }
+    disabled:    { type: boolean }
+    comment:     { type: string }
+    dead:        { type: boolean, description: "true = row deleted." }
+
+PPPInactiveEvent:
+  type: object
+  description: Derived inactive PPP event dari enabled secrets minus active sessions.
+  required: [secret, action]
+  properties:
+    secret:
+      $ref: '#/PPPSecretEvent'
+    action:
+      type: string
+      enum: [added, removed, changed]
+      example: added
+
+HotspotInactiveEvent:
+  type: object
+  description: Derived inactive hotspot event dari enabled users minus active sessions.
+  required: [user, action]
+  properties:
+    user:
+      $ref: '#/HotspotUserEvent'
+    action:
+      type: string
+      enum: [added, removed, changed]
+      example: added
+
 LogEvent:
   type: object
   description: Satu entry log dari /stream/log.
@@ -65,13 +125,29 @@ QueueStatsEvent:
   type: object
   description: |
     Stats queue per interval (default 1s) di /stream/network/queues/stats.
-    Field `bytes`/`packets` format RouterOS `"in/out"`.
-  required: [id, name, target, bytes, packets, rate]
+    Payload sudah diparse dari domain.QueueSimpleWithStats; field counter
+    tetap string mengikuti format RouterOS.
+  required: [id, name, target, disabled, dynamic, bytes, packets, rate]
   properties:
-    id:        { type: string, example: "*1" }
-    name:      { type: string, example: "<hotspot-user01>" }
-    target:    { type: string, example: "10.0.0.5/32" }
-    bytes:     { type: string, example: "1234/5678" }
-    packets:   { type: string, example: "10/15" }
-    rate:      { type: string, example: "200/300" }
-    max_limit: { type: string, example: "2M/2M" }
+    id:                   { type: string, example: "*1" }
+    name:                 { type: string, example: "<hotspot-user01>" }
+    target:               { type: string, example: "10.0.0.5/32" }
+    parent:               { type: string }
+    disabled:             { type: boolean }
+    dynamic:              { type: boolean }
+    comment:              { type: string }
+    bytes:                { type: string, example: "1234/5678" }
+    packets:              { type: string, example: "10/15" }
+    rate:                 { type: string, example: "200/300" }
+    total_rate:           { type: string, example: "500" }
+    packet_rate:          { type: string, example: "1/2" }
+    total_packet_rate:    { type: string, example: "3" }
+    queued_bytes:         { type: string, example: "0/0" }
+    total_queued_bytes:   { type: string, example: "0" }
+    queued_packets:       { type: string, example: "0/0" }
+    total_queued_packets: { type: string, example: "0" }
+    total_bytes:          { type: string, example: "6801" }
+    total_packets:        { type: string, example: "25" }
+    dropped:              { type: string, example: "0/0" }
+    total_dropped:        { type: string, example: "0" }
+    max_limit:            { type: string, example: "2M/2M" }

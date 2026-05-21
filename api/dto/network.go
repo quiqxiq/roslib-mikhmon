@@ -1,6 +1,9 @@
 package dto
 
-import "github.com/quiqxiq/roslib-mikhmon/domain"
+import (
+	"github.com/quiqxiq/roslib-mikhmon/domain"
+	"github.com/quiqxiq/roslib-mikhmon/mikrotik/network"
+)
 
 // ── Interface ──────────────────────────────────────────────────────────
 
@@ -26,7 +29,7 @@ func FromDomainInterface(i domain.Interface) InterfaceResponse {
 		MTU: i.MTU, ActualMTU: i.ActualMTU, MACAddress: i.MACAddress,
 		LastLinkUpTime: i.LastLinkUpTime, LastLinkDownTime: i.LastLinkDownTime,
 		LinkDowns: i.LinkDowns,
-		Running: i.Running, Disabled: i.Disabled, Comment: i.Comment,
+		Running:   i.Running, Disabled: i.Disabled, Comment: i.Comment,
 	}
 }
 
@@ -81,16 +84,20 @@ func FromDomainQueues(qs []domain.QueueSimple) []QueueSimpleResponse {
 // ── IP Pool ────────────────────────────────────────────────────────────
 
 type IPPoolResponse struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Ranges   string `json:"ranges,omitempty"`
-	NextPool string `json:"next_pool,omitempty"`
-	Comment  string `json:"comment,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Ranges    string `json:"ranges,omitempty"`
+	Total     int64  `json:"total"`
+	Used      int64  `json:"used"`
+	Available int64  `json:"available"`
+	NextPool  string `json:"next_pool,omitempty"`
+	Comment   string `json:"comment,omitempty"`
 }
 
 func FromDomainPool(p domain.IPPool) IPPoolResponse {
 	return IPPoolResponse{
 		ID: p.ID, Name: p.Name, Ranges: p.Ranges,
+		Total: p.Total, Used: p.Used, Available: p.Available,
 		NextPool: p.NextPool, Comment: p.Comment,
 	}
 }
@@ -101,6 +108,37 @@ func FromDomainPools(ps []domain.IPPool) []IPPoolResponse {
 		out[i] = FromDomainPool(p)
 	}
 	return out
+}
+
+// IPPoolCreateRequest membungkus body POST /network/pools.
+type IPPoolCreateRequest struct {
+	Name     string `json:"name"             binding:"required,min=1,max=128"`
+	Ranges   string `json:"ranges"           binding:"required,min=1"`
+	NextPool string `json:"next_pool,omitempty"`
+	Comment  string `json:"comment,omitempty"`
+}
+
+func (r IPPoolCreateRequest) ToArgs() network.IPPoolAddArgs {
+	return network.IPPoolAddArgs{
+		Name: r.Name, Ranges: r.Ranges,
+		NextPool: r.NextPool, Comment: r.Comment,
+	}
+}
+
+// IPPoolUpdateRequest membungkus body PUT /network/pools/:id.
+// Pointer = optional/PATCH-style; nil berarti tidak diubah.
+type IPPoolUpdateRequest struct {
+	Name     *string `json:"name,omitempty"`
+	Ranges   *string `json:"ranges,omitempty"`
+	NextPool *string `json:"next_pool,omitempty"`
+	Comment  *string `json:"comment,omitempty"`
+}
+
+func (r IPPoolUpdateRequest) ToArgs(id string) network.IPPoolSetArgs {
+	return network.IPPoolSetArgs{
+		ID: id, Name: r.Name, Ranges: r.Ranges,
+		NextPool: r.NextPool, Comment: r.Comment,
+	}
 }
 
 // ── ARP ────────────────────────────────────────────────────────────────
@@ -172,9 +210,9 @@ func FromDomainLeases(ls []domain.DHCPLease) []DHCPLeaseResponse {
 // ── TrafficSnapshot (untuk SSE stream payload) ─────────────────────────
 
 type TrafficResponse struct {
-	Name             string `json:"name,omitempty"`
-	RxBitsPerSec     int64  `json:"rx_bits_per_sec"`
-	TxBitsPerSec     int64  `json:"tx_bits_per_sec"`
-	RxPacketsPerSec  int64  `json:"rx_packets_per_sec"`
-	TxPacketsPerSec  int64  `json:"tx_packets_per_sec"`
+	Name            string `json:"name,omitempty"`
+	RxBitsPerSec    int64  `json:"rx_bits_per_sec"`
+	TxBitsPerSec    int64  `json:"tx_bits_per_sec"`
+	RxPacketsPerSec int64  `json:"rx_packets_per_sec"`
+	TxPacketsPerSec int64  `json:"tx_packets_per_sec"`
 }

@@ -13,9 +13,9 @@ import (
 //   - /auth/login, /auth/refresh, /auth/logout — public (tidak butuh token).
 //   - Semua endpoint lain butuh Bearer access token (RequireAuth).
 //   - Role enforcement: admin > operator > viewer.
-//     - admin: full access termasuk /auth/users CRUD + DELETE devices + reboot/shutdown.
-//     - operator: CRUD hotspot/voucher/profile, command non-destructive.
-//     - viewer: read-only (GET only, plus SSE).
+//   - admin: full access termasuk /auth/users CRUD + DELETE devices + reboot/shutdown.
+//   - operator: CRUD hotspot/voucher/profile, command non-destructive.
+//   - viewer: read-only (GET only, plus SSE).
 //
 // Kalau deps.AuthSigner nil → enforcement di-skip (test mode / standalone).
 func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
@@ -97,7 +97,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
 	handler.NewPPPProfile(nil).Register(dev)
 	handler.NewPPPActive(nil).Register(dev)
 
-	handler.NewStream(deps.Hub, nil, nil, nil, nil, nil).Register(dev)
+	handler.NewStream(deps.Hub, nil, nil, nil, nil, nil, nil).Register(dev)
 
 	if deps.InfluxReader != nil {
 		handler.NewHistory(deps.InfluxReader).Register(dev)

@@ -105,7 +105,7 @@ docs/openapi/
 └── redocly.yaml             # lint config (security-defined off — auth delegated ke reverse proxy)
 ```
 
-**Coverage**: 103 operations (semua endpoint + 7 SSE stream) + ~65 schemas + 18 example payload untuk endpoint write penting.
+**Coverage**: 112+ operations (semua endpoint + 11 SSE stream) + ~70 schemas + 18 example payload untuk endpoint write penting.
 
 ### Lint & verify
 
@@ -278,7 +278,9 @@ CSV header: `sale_date,sale_time,username,profile,price,sell_price,validity,mac,
 |---|---|
 | `/network/interfaces` | GET |
 | `/network/queues` | GET (`?name=`, `?dynamic=false`), DELETE `/:id` |
-| `/network/pools` | GET (`?cache=true`) |
+| `/network/pools` | GET (`?cache=true`), POST |
+| `/network/pools/by-name/:name` | GET |
+| `/network/pools/:id` | PUT, DELETE |
 | `/network/arp` | GET `?mac=` (wajib), DELETE `/:id` |
 | `/network/dhcp-leases` | GET (`?mac=`), GET `/count`, DELETE `/:id` |
 
@@ -327,12 +329,18 @@ ke router + listener registration.
 |---|---|---|---|
 | `GET /stream/hotspot/active` | `hot.ActiveStream` (Follow) | `change` | `{id, user, address, mac_address, server, uptime, bytes_in, bytes_out, dead}` |
 | `GET /stream/hotspot/active?mode=follow-only` | `hot.ActiveStreamFollowOnly` | `change` | same |
+| `GET /stream/hotspot/users` | `hot.UserListStream` (Follow) | `change` | `{id, name, profile, mac_address, address, server, disabled, comment, dead}` |
+| `GET /stream/hotspot/users?mode=follow-only` | `hot.UserListStreamFollowOnly` | `change` | same |
+| `GET /stream/hotspot/inactive` | `workflows.HotspotInactiveStream` | `inactive` | `{action, user}` |
 | `GET /stream/ppp/active` | `ppp.ActiveStream` | `change` | `{id, name, service, caller_id, address, uptime, dead}` |
+| `GET /stream/ppp/secrets` | `ppp.SecretStream` (Follow) | `change` | `{id, name, service, profile, local_address, remote_address, disabled, comment, dead}` |
+| `GET /stream/ppp/secrets?mode=follow-only` | `ppp.SecretStreamFollowOnly` | `change` | same |
+| `GET /stream/ppp/inactive` | `workflows.PPPInactiveStream` | `inactive` | `{action, secret}` |
 | `GET /stream/log?topics=hotspot,info` | `syslog.LogStream` (FollowOnly) | `log` | `{id, time, topics, message}` |
 | `GET /stream/system/resource?interval=1s` | `sys.MonitorResource` | `resource` | `SystemResourceResponse` |
 | `GET /stream/network/interfaces/:name/traffic` | `net.InterfaceTrafficStream` | `traffic` | `{name, rx_bits_per_sec, tx_bits_per_sec, rx_packets_per_sec, tx_packets_per_sec}` |
 | `GET /stream/network/interfaces/stats?interval=2s` | `net.InterfaceStatsStream` | `stats` | `{id, name, type, rx_byte, tx_byte, running, disabled, ...}` |
-| `GET /stream/network/queues/stats?interval=1s` | `net.QueueStatsStream` | `stats` | `{id, name, target, bytes, packets, rate, max_limit}` |
+| `GET /stream/network/queues/stats?interval=1s` | `net.QueueStatsStreamParsed` | `stats` | `{id, name, target, bytes, packets, rate, total_rate, queued_*, dropped, max_limit}` |
 
 ### Pattern client (JavaScript)
 

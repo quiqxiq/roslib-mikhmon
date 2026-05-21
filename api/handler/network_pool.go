@@ -15,9 +15,15 @@ func NewNetworkPool(net *network.Client) *NetworkPool { return &NetworkPool{Net:
 
 func (h *NetworkPool) Register(g *gin.RouterGroup) {
 	mk := func(c *gin.Context) *NetworkPool { return NewNetworkPool(mustClients(c).Net) }
-	g.GET("/network/pools", func(c *gin.Context) { mk(c).List(c) })
+	p := g.Group("/network/pools")
+	p.GET("", func(c *gin.Context) { mk(c).List(c) })
+	p.GET("/by-name/:name", func(c *gin.Context) { mk(c).GetByName(c) })
+	p.POST("", func(c *gin.Context) { mk(c).Create(c) })
+	p.PUT("/:id", func(c *gin.Context) { mk(c).Update(c) })
+	p.DELETE("/:id", func(c *gin.Context) { mk(c).Delete(c) })
 }
 
+// List → §1.10.
 func (h *NetworkPool) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	ttl, useCache := parseCacheQuery(c, 5*time.Minute)
@@ -34,4 +40,52 @@ func (h *NetworkPool) List(c *gin.Context) {
 	}
 	out := dto.FromDomainPools(ps)
 	WriteList(c, out, len(out))
+}
+
+// GetByName → §1.10.
+func (h *NetworkPool) GetByName(c *gin.Context) {
+	p, err := h.Net.IPPoolByName(c.Request.Context(), c.Param("name"))
+	if err != nil {
+		WriteErr(c, err)
+		return
+	}
+	WriteOK(c, dto.FromDomainPool(p))
+}
+
+// Create → §1.10.
+func (h *NetworkPool) Create(c *gin.Context) {
+	var req dto.IPPoolCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		WriteValidationErr(c, err)
+		return
+	}
+	id, err := h.Net.IPPoolAdd(c.Request.Context(), req.ToArgs())
+	if err != nil {
+		WriteErr(c, err)
+		return
+	}
+	WriteCreated(c, dto.IDResponse{ID: id})
+}
+
+// Update → §1.10.
+func (h *NetworkPool) Update(c *gin.Context) {
+	var req dto.IPPoolUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		WriteValidationErr(c, err)
+		return
+	}
+	if err := h.Net.IPPoolSet(c.Request.Context(), req.ToArgs(c.Param("id"))); err != nil {
+		WriteErr(c, err)
+		return
+	}
+	WriteNoContent(c)
+}
+
+// Delete → §1.10.
+func (h *NetworkPool) Delete(c *gin.Context) {
+	if err := h.Net.IPPoolRemove(c.Request.Context(), c.Param("id")); err != nil {
+		WriteErr(c, err)
+		return
+	}
+	WriteNoContent(c)
 }

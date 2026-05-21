@@ -54,6 +54,14 @@ device encryption ditunda ke fase 5 (separate plan).
   untuk supervisor goroutines.
 - **`sse.Hub.Stats()`** — expose per-topic subscriber + drop count
   untuk healthz / monitoring.
+- **IP Pool CRUD API**: `GET /network/pools/by-name/:name`,
+  `POST /network/pools`, `PUT /network/pools/:id`, dan
+  `DELETE /network/pools/:id`.
+- **SSE table streams**: `GET /stream/hotspot/users` dan
+  `GET /stream/ppp/secrets`, termasuk `?mode=follow-only`.
+- **SSE inactive streams**: `GET /stream/hotspot/inactive` dan
+  `GET /stream/ppp/inactive` memakai derived workflow enabled user/secret
+  minus active session.
 
 ### Changed
 
@@ -72,6 +80,10 @@ device encryption ditunda ke fase 5 (separate plan).
 - **SSE `Unsubscribe`**: tidak lagi `close()` channel (race detector
   warning pre-existing pada close-during-publish). Channel di-GC
   oleh runtime saat reference habis.
+- **Queue stats SSE payload**: `GET /stream/network/queues/stats`
+  sekarang memakai DTO typed dari `QueueStatsStreamParsed`, termasuk
+  counter RouterOS lengkap (`bytes`, `packets`, `rate`, queued, total,
+  dropped).
 - **`metrics.startLocked` partial-failure tracking**: hanya panggil
   `Stop*` untuk stream yang berhasil register (cleanup pakai
   `[]startedStream` tracker). Sebelumnya panggil semua Stop blindly →
@@ -107,9 +119,16 @@ device encryption ditunda ke fase 5 (separate plan).
 - `workflows/generate_vouchers_test.go` — validation, randomString,
   buildVoucherAddArgs.
 - `domain/charset_chars_test.go` — character set composition.
+- `api/handler/network_pool_test.go` — HTTP handler IP Pool list,
+  get-by-name, create, update, delete via `tcpmock`.
+- `api/handler/stream_sse_test.go` — HTTP SSE writer tests untuk
+  hotspot users, hotspot inactive, PPP secrets, PPP inactive, dan parsed
+  queue stats.
 
 ### Documentation
 
 - `docs/API.md` — voucher generator, reports, healthz dependency
   format, CORS default change, DEVICE_TLS_INSECURE env.
+- `docs/openapi/*` — IP Pool CRUD paths, new SSE stream paths, dan
+  stream event schemas.
 - `.env.example` — CORS default kosong dengan comment warning.

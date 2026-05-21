@@ -1,5 +1,7 @@
 package dto
 
+import "github.com/quiqxiq/roslib-mikhmon/domain"
+
 // InterfaceStatsEvent adalah typed event untuk SSE /stream/network/interfaces/stats.
 type InterfaceStatsEvent struct {
 	ID       string `json:"id"`
@@ -14,14 +16,45 @@ type InterfaceStatsEvent struct {
 }
 
 // QueueStatsEvent adalah typed event untuk SSE /stream/network/queues/stats.
+// Format string "in/out" untuk counter pakai konvensi RouterOS bawaan.
 type QueueStatsEvent struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Target   string `json:"target"`
-	Bytes    string `json:"bytes"`   // format RouterOS "in/out"
-	Packets  string `json:"packets"` // format RouterOS "in/out"
-	Rate     string `json:"rate"`
-	MaxLimit string `json:"max_limit,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Target             string `json:"target"`
+	Parent             string `json:"parent,omitempty"`
+	Disabled           bool   `json:"disabled"`
+	Dynamic            bool   `json:"dynamic"`
+	Comment            string `json:"comment,omitempty"`
+	Bytes              string `json:"bytes"`
+	Packets            string `json:"packets"`
+	Rate               string `json:"rate"`
+	TotalRate          string `json:"total_rate,omitempty"`
+	PacketRate         string `json:"packet_rate,omitempty"`
+	TotalPacketRate    string `json:"total_packet_rate,omitempty"`
+	QueuedBytes        string `json:"queued_bytes,omitempty"`
+	TotalQueuedBytes   string `json:"total_queued_bytes,omitempty"`
+	QueuedPackets      string `json:"queued_packets,omitempty"`
+	TotalQueuedPackets string `json:"total_queued_packets,omitempty"`
+	TotalBytes         string `json:"total_bytes,omitempty"`
+	TotalPackets       string `json:"total_packets,omitempty"`
+	Dropped            string `json:"dropped,omitempty"`
+	TotalDropped       string `json:"total_dropped,omitempty"`
+	MaxLimit           string `json:"max_limit,omitempty"`
+}
+
+// FromDomainQueueStats memetakan domain.QueueSimpleWithStats ke event SSE.
+func FromDomainQueueStats(q domain.QueueSimpleWithStats) QueueStatsEvent {
+	return QueueStatsEvent{
+		ID: q.ID, Name: q.Name, Target: q.Target, Parent: q.Parent,
+		Disabled: q.Disabled, Dynamic: q.Dynamic, Comment: q.Comment,
+		Bytes: q.Bytes, Packets: q.Packets, Rate: q.Rate,
+		TotalRate: q.TotalRate, PacketRate: q.PacketRate, TotalPacketRate: q.TotalPacketRate,
+		QueuedBytes: q.QueuedBytes, TotalQueuedBytes: q.TotalQueuedBytes,
+		QueuedPackets: q.QueuedPackets, TotalQueuedPackets: q.TotalQueuedPackets,
+		TotalBytes: q.TotalBytes, TotalPackets: q.TotalPackets,
+		Dropped: q.Dropped, TotalDropped: q.TotalDropped,
+		MaxLimit: q.MaxLimit,
+	}
 }
 
 // HotspotActiveEvent adalah typed event untuk SSE /stream/hotspot/active.
@@ -57,4 +90,70 @@ type LogEvent struct {
 	Time    string `json:"time"`
 	Topics  string `json:"topics"`
 	Message string `json:"message"`
+}
+
+// PPPSecretEvent adalah typed event untuk SSE /stream/ppp/secrets
+// (mengikuti /ppp/secret/print follow). Field dead=true menandakan
+// row yang dihapus dari tabel.
+type PPPSecretEvent struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Service    string `json:"service,omitempty"`
+	Profile    string `json:"profile,omitempty"`
+	LocalAddr  string `json:"local_address,omitempty"`
+	RemoteAddr string `json:"remote_address,omitempty"`
+	CallerID   string `json:"caller_id,omitempty"`
+	Disabled   bool   `json:"disabled"`
+	Comment    string `json:"comment,omitempty"`
+	Dead       bool   `json:"dead"`
+}
+
+// FromDomainPPPSecretEvent memetakan domain.PPPSecret + flag dead ke event.
+func FromDomainPPPSecretEvent(s domain.PPPSecret, dead bool) PPPSecretEvent {
+	return PPPSecretEvent{
+		ID: s.ID, Name: s.Name, Service: s.Service, Profile: s.Profile,
+		LocalAddr: s.LocalAddr, RemoteAddr: s.RemoteAddr, CallerID: s.CallerID,
+		Disabled: s.Disabled, Comment: s.Comment, Dead: dead,
+	}
+}
+
+// HotspotUserEvent adalah typed event untuk SSE /stream/hotspot/users
+// (mengikuti /ip/hotspot/user/print follow). Field dead=true menandakan
+// row yang dihapus dari tabel.
+type HotspotUserEvent struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Profile    string `json:"profile,omitempty"`
+	MACAddress string `json:"mac_address,omitempty"`
+	Address    string `json:"address,omitempty"`
+	Email      string `json:"email,omitempty"`
+	Server     string `json:"server,omitempty"`
+	Disabled   bool   `json:"disabled"`
+	Comment    string `json:"comment,omitempty"`
+	Dead       bool   `json:"dead"`
+}
+
+// FromDomainHotspotUserEvent memetakan domain.HotspotUser + flag dead ke event.
+func FromDomainHotspotUserEvent(u domain.HotspotUser, dead bool) HotspotUserEvent {
+	return HotspotUserEvent{
+		ID: u.ID, Name: u.Name, Profile: u.Profile, MACAddress: u.MACAddress,
+		Address: u.Address, Email: u.Email, Server: u.Server,
+		Disabled: u.Disabled, Comment: u.Comment, Dead: dead,
+	}
+}
+
+// PPPInactiveEvent adalah typed event untuk SSE /stream/ppp/inactive
+// (derived: enabled /ppp/secret minus /ppp/active). Action salah satu:
+// "added" | "removed" | "changed".
+type PPPInactiveEvent struct {
+	Secret PPPSecretEvent `json:"secret"`
+	Action string         `json:"action"`
+}
+
+// HotspotInactiveEvent adalah typed event untuk SSE /stream/hotspot/inactive
+// (derived: enabled /ip/hotspot/user minus /ip/hotspot/active). Action salah
+// satu: "added" | "removed" | "changed".
+type HotspotInactiveEvent struct {
+	User   HotspotUserEvent `json:"user"`
+	Action string           `json:"action"`
 }

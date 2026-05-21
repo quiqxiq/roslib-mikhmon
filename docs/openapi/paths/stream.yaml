@@ -34,6 +34,44 @@
             schema: { $ref: '../schemas/stream-events.yaml#/HotspotActiveEvent' }
       '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
 
+/devices/{device_id}/stream/hotspot/users:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ModeQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream hotspot users table (SSE)
+    description: |
+      SSE delta dari `/ip/hotspot/user/print follow`. Default mode mengirim
+      snapshot awal lalu delta; `?mode=follow-only` hanya delta baru.
+      Event `change` memakai payload `HotspotUserEvent`.
+    x-event-types: [change]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/HotspotUserEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/hotspot/inactive:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Streaming]
+    summary: Stream inactive hotspot users (SSE derived)
+    description: |
+      Derived stream dari enabled hotspot users minus active sessions. Event
+      `inactive` memakai action `added`, `removed`, atau `changed`.
+    x-event-types: [inactive]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/HotspotInactiveEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
 /devices/{device_id}/stream/ppp/active:
   parameters:
     - $ref: '../components/parameters.yaml#/DeviceIdPath'
@@ -51,6 +89,44 @@
         content:
           text/event-stream:
             schema: { $ref: '../schemas/stream-events.yaml#/PPPActiveEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/ppp/secrets:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/ModeQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream PPP secrets table (SSE)
+    description: |
+      SSE delta dari `/ppp/secret/print follow`. Default mode mengirim
+      snapshot awal lalu delta; `?mode=follow-only` hanya delta baru.
+      Event `change` memakai payload `PPPSecretEvent`.
+    x-event-types: [change]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/PPPSecretEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/ppp/inactive:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Streaming]
+    summary: Stream inactive PPP secrets (SSE derived)
+    description: |
+      Derived stream dari enabled PPP secrets minus active sessions. Event
+      `inactive` memakai action `added`, `removed`, atau `changed`.
+    x-event-types: [inactive]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/PPPInactiveEvent' }
       '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
 
 /devices/{device_id}/stream/log:
@@ -152,7 +228,9 @@
     summary: Stream queue stats (SSE polling)
     description: |
       Polling `/queue/simple/print stats` per `?interval=` (default `1s`).
-      Field `bytes`/`packets` format RouterOS `"in/out"`.
+      Payload diparse ke `QueueStatsEvent` lengkap. Field counter tetap
+      memakai format RouterOS `"in/out"` saat RouterOS mengembalikannya
+      sebagai pasangan arah.
     x-event-types: [stats]
     responses:
       '200':

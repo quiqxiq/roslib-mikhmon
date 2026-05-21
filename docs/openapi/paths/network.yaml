@@ -39,6 +39,71 @@
                     data:
                       type: array
                       items: { $ref: '../schemas/network.yaml#/IPPoolResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+  post:
+    tags: [Network]
+    summary: Create IP pool
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/network.yaml#/IPPoolCreateRequest' }
+    responses:
+      '201':
+        description: Created pool ID
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/envelope.yaml#/IDResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/network/pools/by-name/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/NamePath'
+  get:
+    tags: [Network]
+    summary: Get IP pool by name
+    responses:
+      '200':
+        description: Pool detail
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/network.yaml#/IPPoolResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+
+/devices/{device_id}/network/pools/{id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IdPath'
+  put:
+    tags: [Network]
+    summary: Update IP pool
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: '../schemas/network.yaml#/IPPoolUpdateRequest' }
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
+  delete:
+    tags: [Network]
+    summary: Delete IP pool
+    responses:
+      '204': { $ref: '../components/responses.yaml#/NoContentResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }
 
 /devices/{device_id}/network/arp:
   parameters:
