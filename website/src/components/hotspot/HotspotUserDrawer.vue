@@ -36,7 +36,11 @@ const isEdit = () => Boolean(props.user?.id)
 </script>
 
 <template>
-  <Drawer :open="open" :title="isEdit() ? 'Edit Hotspot User' : 'Tambah Hotspot User'" @close="emit('close')">
+  <Drawer
+    :open="open"
+    :title="isEdit() ? 'Edit Hotspot User' : 'Tambah Hotspot User'"
+    @close="emit('close')"
+  >
     <Tabs
       v-model="tab"
       :tabs="[
@@ -132,7 +136,12 @@ const isEdit = () => Boolean(props.user?.id)
     </div>
 
     <template #footer>
-      <button v-if="isEdit()" class="btn btn-danger btn-sm" type="button" @click="emit('delete', form.id as string)">
+      <button
+        v-if="isEdit()"
+        class="btn btn-danger btn-sm"
+        type="button"
+        @click="emit('delete', form.id as string)"
+      >
         Hapus
       </button>
       <div class="flex-1" />

@@ -51,7 +51,8 @@ const summary = computed(() => ({
   total: users.value.length,
   active: users.value.filter((u) => u.isActive).length,
   disabled: users.value.filter((u) => u.disabled).length,
-  expiring: users.value.filter((u) => u.expiry < Date.now() + 86400000 && u.expiry > Date.now()).length,
+  expiring: users.value.filter((u) => u.expiry < Date.now() + 86400000 && u.expiry > Date.now())
+    .length,
   expired: users.value.filter((u) => u.expiry < Date.now()).length,
 }))
 
@@ -64,7 +65,11 @@ const columns = computed<ColumnDef<FixtureHotspotUser>[]>(() => [
         h(Avatar, { name: row.original.name, size: 28 }),
         h('div', null, [
           h('div', { class: 'text-[13px] font-medium' }, row.original.name),
-          h('div', { class: 'mono text-[11px]', style: 'color: var(--muted)' }, row.original.mac || '—'),
+          h(
+            'div',
+            { class: 'mono text-[11px]', style: 'color: var(--muted)' },
+            row.original.mac || '—',
+          ),
         ]),
       ]),
   },
@@ -86,10 +91,8 @@ const columns = computed<ColumnDef<FixtureHotspotUser>[]>(() => [
     cell: ({ row }) => {
       const u = row.original
       if (u.disabled) return h(Badge, { tone: 'neutral' }, () => 'Disabled')
-      return h(
-        Badge,
-        { tone: u.isActive ? 'success' : 'neutral', dot: true },
-        () => (u.isActive ? 'Online' : 'Offline'),
+      return h(Badge, { tone: u.isActive ? 'success' : 'neutral', dot: true }, () =>
+        u.isActive ? 'Online' : 'Offline',
       )
     },
   },

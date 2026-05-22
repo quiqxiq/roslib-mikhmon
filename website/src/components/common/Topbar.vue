@@ -51,10 +51,7 @@ function onHamburger() {
     </div>
 
     <div v-if="isMd" class="flex flex-1 justify-center">
-      <SearchInput
-        v-model="search"
-        placeholder="Cari user, voucher, IP, MAC, profile…"
-      />
+      <SearchInput v-model="search" placeholder="Cari user, voucher, IP, MAC, profile…" />
     </div>
     <div v-else class="flex-1" />
 
@@ -62,12 +59,7 @@ function onHamburger() {
       <button v-if="isSm" class="btn btn-ghost btn-icon" type="button" title="Refresh">
         <Icon name="Refresh" :size="16" />
       </button>
-      <button
-        v-if="isSm"
-        class="btn btn-ghost btn-icon relative"
-        type="button"
-        title="Notifikasi"
-      >
+      <button v-if="isSm" class="btn btn-ghost btn-icon relative" type="button" title="Notifikasi">
         <Icon name="Bell" :size="16" />
         <span
           class="absolute rounded-full"
@@ -81,7 +73,12 @@ function onHamburger() {
           "
         />
       </button>
-      <button class="btn btn-ghost btn-icon" type="button" title="Tweaks" @click="tweaksOpen = !tweaksOpen">
+      <button
+        class="btn btn-ghost btn-icon"
+        type="button"
+        title="Tweaks"
+        @click="tweaksOpen = !tweaksOpen"
+      >
         <Icon name="Cog" :size="16" />
       </button>
       <button class="btn btn-ghost btn-icon" type="button" title="Tema" @click="toggleTheme">

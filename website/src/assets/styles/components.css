@@ -420,14 +420,12 @@ select {
 .main-bg {
   background:
     radial-gradient(800px 400px at 90% -10%, rgba(139, 92, 246, 0.1), transparent 60%),
-    radial-gradient(700px 380px at -10% -20%, rgba(34, 211, 238, 0.08), transparent 60%),
-    var(--bg);
+    radial-gradient(700px 380px at -10% -20%, rgba(34, 211, 238, 0.08), transparent 60%), var(--bg);
 }
 [data-theme='light'] .main-bg {
   background:
     radial-gradient(900px 500px at 100% -10%, rgba(139, 92, 246, 0.06), transparent 60%),
-    radial-gradient(800px 400px at -10% -20%, rgba(34, 211, 238, 0.05), transparent 60%),
-    var(--bg);
+    radial-gradient(800px 400px at -10% -20%, rgba(34, 211, 238, 0.05), transparent 60%), var(--bg);
 }
 
 .gradient-text {

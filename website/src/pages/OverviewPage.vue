@@ -59,15 +59,20 @@ function go(path: string) {
 
 <template>
   <div class="fade-in">
-    <PageHeader
-      title="Selamat datang kembali, Rendra"
-    >
+    <PageHeader title="Selamat datang kembali, Rendra">
       <template #default>
         <div class="ph-sub">
           Ringkasan operasional
           <b style="color: var(--text-2); font-weight: 500">{{ dev.slug }}</b>
           ·
-          {{ new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }}
+          {{
+            new Date().toLocaleDateString('id-ID', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })
+          }}
         </div>
       </template>
       <template #right>
@@ -142,10 +147,14 @@ function go(path: string) {
               Penjualan Voucher
             </div>
             <div class="mt-1 flex flex-wrap items-baseline gap-2.5">
-              <span class="text-2xl font-semibold" style="letter-spacing: -0.02em">{{ fmtRp(2896000) }}</span>
+              <span class="text-2xl font-semibold" style="letter-spacing: -0.02em">{{
+                fmtRp(2896000)
+              }}</span>
               <Badge tone="lime">↑ 23.5% WoW</Badge>
             </div>
-            <div class="mt-1 text-xs" style="color: var(--muted)">7 hari terakhir · 408 transaksi</div>
+            <div class="mt-1 text-xs" style="color: var(--muted)">
+              7 hari terakhir · 408 transaksi
+            </div>
           </div>
           <Segmented
             v-model="salesView"
@@ -224,12 +233,16 @@ function go(path: string) {
               <span class="flex items-center gap-1.5">
                 <span class="h-2 w-2 rounded-sm" style="background: var(--accent-cyan)" />
                 <span class="text-xs" style="color: var(--muted)">RX</span>
-                <span class="mono text-sm font-semibold">{{ rxLive.data.value.at(-1)?.toFixed(1) ?? '0' }} Mbps</span>
+                <span class="mono text-sm font-semibold"
+                  >{{ rxLive.data.value.at(-1)?.toFixed(1) ?? '0' }} Mbps</span
+                >
               </span>
               <span class="flex items-center gap-1.5">
                 <span class="h-2 w-2 rounded-sm" style="background: var(--accent-violet)" />
                 <span class="text-xs" style="color: var(--muted)">TX</span>
-                <span class="mono text-sm font-semibold">{{ txLive.data.value.at(-1)?.toFixed(1) ?? '0' }} Mbps</span>
+                <span class="mono text-sm font-semibold"
+                  >{{ txLive.data.value.at(-1)?.toFixed(1) ?? '0' }} Mbps</span
+                >
               </span>
             </div>
           </div>

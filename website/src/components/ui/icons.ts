@@ -5,8 +5,10 @@ export interface IconDef {
   body: string
 }
 
-export const ICONS = {
-  Home: { body: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/><path d="M10 20v-5h4v5"/>' },
+export const ICONS: Record<string, IconDef> = {
+  Home: {
+    body: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/><path d="M10 20v-5h4v5"/>',
+  },
   Users: {
     body: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 19c.5-3 3.2-5 6.5-5s6 2 6.5 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14c2.6 0 5 1.5 5.5 4"/>',
   },
@@ -46,7 +48,9 @@ export const ICONS = {
   ChevronLeft: { body: '<path d="m15 6-6 6 6 6"/>' },
   X: { body: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>' },
   Check: { body: '<path d="m4 12 5 5L20 6"/>' },
-  Bell: { body: '<path d="M6 9a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9Z"/><path d="M10 21a2 2 0 0 0 4 0"/>' },
+  Bell: {
+    body: '<path d="M6 9a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9Z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+  },
   Sun: {
     body: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2"/><path d="M12 19v2"/><path d="M4.2 4.2l1.4 1.4"/><path d="M18.4 18.4l1.4 1.4"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="M4.2 19.8l1.4-1.4"/><path d="M18.4 5.6l1.4-1.4"/>',
   },
@@ -69,7 +73,9 @@ export const ICONS = {
   Boot: { body: '<path d="M12 2v8"/><path d="M5 10h14v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-9Z"/>' },
   Zap: { body: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>' },
   Clock: { body: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-  Eye: { body: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>' },
+  Eye: {
+    body: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  },
   EyeOff: {
     body: '<path d="M3 3l18 18"/><path d="M10.6 6.2A10 10 0 0 1 12 6c6.5 0 10 6 10 6a16.5 16.5 0 0 1-3 4"/><path d="M6.5 7.5C3.4 9.4 2 12 2 12s3.5 7 10 7c1.6 0 3-.3 4.3-.8"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2"/>',
   },
@@ -79,13 +85,19 @@ export const ICONS = {
   Logout: {
     body: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   },
-  Mac: { body: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h.01M15 14h.01"/>' },
+  Mac: {
+    body: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h.01M11 14h.01M15 14h.01"/>',
+  },
   Up: { body: '<path d="m6 15 6-6 6 6"/>' },
   Down: { body: '<path d="m6 9 6 6 6-6"/>' },
   ArrowUpRight: { body: '<path d="M7 17 17 7"/><path d="M8 7h9v9"/>' },
-  Sparkles: { body: '<path d="M9 3v4M7 5h4M17 11v4M15 13h4M12 9l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z"/>' },
+  Sparkles: {
+    body: '<path d="M9 3v4M7 5h4M17 11v4M15 13h4M12 9l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z"/>',
+  },
   Kick: { body: '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/>' },
-  Lock: { body: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>' },
+  Lock: {
+    body: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  },
   Menu: { body: '<path d="M3 6h18M3 12h18M3 18h18"/>' },
 } as const satisfies Record<string, IconDef>
 

@@ -143,10 +143,15 @@ function openProfile(p: FixtureHotspotProfile) {
                 ]"
               />
             </Field>
-            <div class="flex items-center justify-between rounded-lg p-3" style="background: var(--bg-2)">
+            <div
+              class="flex items-center justify-between rounded-lg p-3"
+              style="background: var(--bg-2)"
+            >
               <div>
                 <div class="text-sm font-medium">Lock to MAC</div>
-                <div class="text-xs" style="color: var(--muted)">Voucher hanya bisa dipakai 1 device</div>
+                <div class="text-xs" style="color: var(--muted)">
+                  Voucher hanya bisa dipakai 1 device
+                </div>
               </div>
               <Toggle :model-value="false" />
             </div>
@@ -158,7 +163,9 @@ function openProfile(p: FixtureHotspotProfile) {
         <button class="btn btn-danger btn-sm" type="button">Hapus profile</button>
         <div class="flex-1" />
         <button class="btn btn-sm" type="button" @click="drawerOpen = false">Batal</button>
-        <button class="btn btn-primary btn-sm" type="button" @click="drawerOpen = false">Simpan</button>
+        <button class="btn btn-primary btn-sm" type="button" @click="drawerOpen = false">
+          Simpan
+        </button>
       </template>
     </Drawer>
   </div>

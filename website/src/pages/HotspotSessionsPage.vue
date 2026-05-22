@@ -89,16 +89,8 @@ const columns = computed<ColumnDef<FixtureHotspotActive>[]>(() => [
           height: 20,
         }),
         h('div', { class: 'mono text-[11px]' }, [
-          h(
-            'div',
-            { style: 'color: var(--accent-cyan)' },
-            `↓ ${fmtRate(row.original.rxRate)}`,
-          ),
-          h(
-            'div',
-            { style: 'color: var(--accent-violet)' },
-            `↑ ${fmtRate(row.original.txRate)}`,
-          ),
+          h('div', { style: 'color: var(--accent-cyan)' }, `↓ ${fmtRate(row.original.rxRate)}`),
+          h('div', { style: 'color: var(--accent-violet)' }, `↑ ${fmtRate(row.original.txRate)}`),
         ]),
       ]),
   },
@@ -106,7 +98,11 @@ const columns = computed<ColumnDef<FixtureHotspotActive>[]>(() => [
     id: 'bytes',
     header: 'Bytes',
     cell: ({ row }) =>
-      h('span', { class: 'mono text-[12px]' }, fmtBytes(row.original.bytesIn + row.original.bytesOut)),
+      h(
+        'span',
+        { class: 'mono text-[12px]' },
+        fmtBytes(row.original.bytesIn + row.original.bytesOut),
+      ),
     meta: { mobileHidden: true },
   },
   {

@@ -58,7 +58,11 @@ const statusColor = computed(() => {
       "
       :style="{ background: active ? 'var(--bg-3)' : 'var(--bg-2)' }"
     >
-      <Icon name="Server" :size="14" :style="{ color: active ? 'var(--accent-cyan)' : 'var(--muted)' }" />
+      <Icon
+        name="Server"
+        :size="14"
+        :style="{ color: active ? 'var(--accent-cyan)' : 'var(--muted)' }"
+      />
       <span
         class="absolute rounded-full"
         :style="{
@@ -76,11 +80,7 @@ const statusColor = computed(() => {
       <span class="block truncate text-[13px] font-medium">{{ device.slug }}</span>
       <span class="mono block text-[10.5px]" style="color: var(--muted)">{{ device.address }}</span>
     </span>
-    <span
-      v-if="device.active > 0"
-      class="tabular text-[10.5px]"
-      style="color: var(--muted)"
-    >
+    <span v-if="device.active > 0" class="tabular text-[10.5px]" style="color: var(--muted)">
       {{ device.active }}
     </span>
   </button>

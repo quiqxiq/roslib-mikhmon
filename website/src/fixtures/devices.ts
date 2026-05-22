@@ -79,7 +79,13 @@ export const NAV: NavItem[] = [
     primary: true,
     badge: '64',
   },
-  { id: 'voucher', label: 'Voucher Generator', icon: 'Ticket', to: '/hotspot/voucher', primary: true },
+  {
+    id: 'voucher',
+    label: 'Voucher Generator',
+    icon: 'Ticket',
+    to: '/hotspot/voucher',
+    primary: true,
+  },
   {
     id: 'sessions',
     label: 'Live Sessions',

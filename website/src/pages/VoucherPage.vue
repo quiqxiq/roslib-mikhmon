@@ -54,7 +54,10 @@ function generate() {
   setTimeout(() => {
     const arr: Voucher[] = []
     for (let i = 0; i < count.value; i++) {
-      const code = mode.value === 'prefix' ? `${prefix.value}${vid().slice(0, charLen.value)}` : vid().slice(0, charLen.value)
+      const code =
+        mode.value === 'prefix'
+          ? `${prefix.value}${vid().slice(0, charLen.value)}`
+          : vid().slice(0, charLen.value)
       arr.push({
         code,
         password: pwdMode.value === 'fixed' ? '1234' : vid().slice(0, 4),
@@ -76,7 +79,10 @@ function reset() {
 
 <template>
   <div class="fade-in">
-    <PageHeader title="Voucher Generator" subtitle="Buat batch voucher hotspot dengan format custom">
+    <PageHeader
+      title="Voucher Generator"
+      subtitle="Buat batch voucher hotspot dengan format custom"
+    >
       <template v-if="result" #right>
         <Badge tone="success" dot>{{ result.length }} voucher berhasil dibuat</Badge>
         <button class="btn btn-sm" type="button">
@@ -147,7 +153,9 @@ function reset() {
                   @click="chooseProfile(p.name)"
                 >
                   <div class="text-[12px] font-semibold">{{ p.name }}</div>
-                  <div class="mono mt-0.5 text-[10.5px]" style="color: var(--muted)">{{ p.speed }} · {{ p.validity }}</div>
+                  <div class="mono mt-0.5 text-[10.5px]" style="color: var(--muted)">
+                    {{ p.speed }} · {{ p.validity }}
+                  </div>
                   <div class="mt-1 text-[11px] font-semibold" style="color: var(--accent-cyan)">
                     {{ fmtRpShort(p.price) }}
                   </div>
@@ -231,10 +239,15 @@ function reset() {
           </Field>
         </section>
 
-        <div class="flex items-center justify-between rounded-lg p-4" style="background: var(--bg-2)">
+        <div
+          class="flex items-center justify-between rounded-lg p-4"
+          style="background: var(--bg-2)"
+        >
           <div class="text-xs" style="color: var(--muted)">
             Estimasi pemasukan:
-            <span class="ml-1 font-semibold text-base" style="color: var(--text)">{{ fmtRp(estimatedRevenue) }}</span>
+            <span class="ml-1 font-semibold text-base" style="color: var(--text)">{{
+              fmtRp(estimatedRevenue)
+            }}</span>
           </div>
           <button class="btn btn-violet" type="button" :disabled="generating" @click="generate">
             <Icon name="Sparkles" :size="14" />
@@ -245,7 +258,10 @@ function reset() {
 
       <div class="space-y-4">
         <div class="card">
-          <div class="mb-3 text-[10px] font-semibold uppercase" style="color: var(--muted); letter-spacing: 0.08em">
+          <div
+            class="mb-3 text-[10px] font-semibold uppercase"
+            style="color: var(--muted); letter-spacing: 0.08em"
+          >
             Preview Voucher
           </div>
           <VoucherCard
@@ -256,8 +272,14 @@ function reset() {
             :price="price"
           />
         </div>
-        <div class="card" style="background: var(--accent-cyan-soft); border-color: rgba(34,211,238,0.3)">
-          <div class="mb-2 flex items-center gap-2 text-sm font-semibold" style="color: var(--accent-cyan)">
+        <div
+          class="card"
+          style="background: var(--accent-cyan-soft); border-color: rgba(34, 211, 238, 0.3)"
+        >
+          <div
+            class="mb-2 flex items-center gap-2 text-sm font-semibold"
+            style="color: var(--accent-cyan)"
+          >
             <Icon name="Sparkles" :size="14" />
             Tips
           </div>
@@ -269,14 +291,24 @@ function reset() {
           </ul>
         </div>
         <div class="card">
-          <div class="mb-2 text-[10px] font-semibold uppercase" style="color: var(--muted); letter-spacing: 0.08em">
+          <div
+            class="mb-2 text-[10px] font-semibold uppercase"
+            style="color: var(--muted); letter-spacing: 0.08em"
+          >
             Batch Terakhir
           </div>
           <div class="space-y-2 text-xs">
-            <div v-for="i in 3" :key="i" class="flex items-center justify-between border-b pb-2 last:border-0" style="border-color: var(--border)">
+            <div
+              v-for="i in 3"
+              :key="i"
+              class="flex items-center justify-between border-b pb-2 last:border-0"
+              style="border-color: var(--border)"
+            >
               <div>
                 <div class="font-medium">21 Mei 2026 · 14:0{{ i }}</div>
-                <div style="color: var(--muted)">{{ 50 - i * 10 }}× {{ HS_PROFILES[i].name }} · oleh rendra</div>
+                <div style="color: var(--muted)">
+                  {{ 50 - i * 10 }}× {{ HS_PROFILES[i].name }} · oleh rendra
+                </div>
               </div>
               <span class="mono font-semibold" style="color: var(--accent-lime)">
                 {{ fmtRpShort((50 - i * 10) * HS_PROFILES[i].price) }}
@@ -289,7 +321,10 @@ function reset() {
 
     <!-- Post-generate state -->
     <div v-else class="space-y-4">
-      <div class="card flex flex-wrap items-center justify-between gap-3" style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3)">
+      <div
+        class="card flex flex-wrap items-center justify-between gap-3"
+        style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3)"
+      >
         <div class="flex items-center gap-3">
           <div
             class="flex h-10 w-10 items-center justify-center rounded-full"
@@ -298,8 +333,12 @@ function reset() {
             <Icon name="Check" :size="20" />
           </div>
           <div>
-            <div class="text-sm font-semibold" style="color: var(--success)">{{ result.length }} voucher berhasil dibuat</div>
-            <div class="text-xs" style="color: var(--muted)">Estimasi pendapatan {{ fmtRp(result.length * price) }}</div>
+            <div class="text-sm font-semibold" style="color: var(--success)">
+              {{ result.length }} voucher berhasil dibuat
+            </div>
+            <div class="text-xs" style="color: var(--muted)">
+              Estimasi pendapatan {{ fmtRp(result.length * price) }}
+            </div>
           </div>
         </div>
         <Segmented

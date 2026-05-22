@@ -77,7 +77,13 @@ const uptimeSec = computed(() => Math.floor((Date.now() - props.session.uptimeSt
           ↓ {{ fmtRate(session.rxRate) }} · ↑ {{ fmtRate(session.txRate) }}
         </span>
       </div>
-      <Spark :data="session.sparkIn" kind="area" color="var(--accent-cyan)" :width="280" :height="40" />
+      <Spark
+        :data="session.sparkIn"
+        kind="area"
+        color="var(--accent-cyan)"
+        :width="280"
+        :height="40"
+      />
     </div>
 
     <div class="flex flex-wrap gap-2">
