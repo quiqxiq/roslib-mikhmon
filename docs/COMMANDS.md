@@ -9,9 +9,13 @@ Peta dari analisis `mikhmonv3-analisis.md` ke fungsi Go.
 | `/system/identity/print` | `system.Client.Identity` |
 | `/system/resource/print` | `system.Client.Resource` |
 | `/system/routerboard/print` | `system.Client.Routerboard` |
+| `/system/routerboard/print` (poll) | `system.Client.MonitorRouterboard` |
 | `/system/clock/print` | `system.Client.Clock` |
+| `/system/license/print` | `system.Client.License` |
 | `/system/reboot` | `system.Client.Reboot` |
 | `/system/shutdown` | `system.Client.Shutdown` |
+| `/ping` (inherent stream) | `system.Client.PingStream` |
+| `/ping count=…` | `system.Client.PingCount` |
 
 ## §1.2 System Logging
 
@@ -125,6 +129,8 @@ Konstanta filter:
 | `/queue/simple/print` | `network.Client.QueueSimpleList` |
 | `/queue/simple/print stats interval=…` | `network.Client.QueueStatsStream` |
 | `/queue/simple/print stats interval=…` (parsed) | `network.Client.QueueStatsStreamParsed` |
+| `/queue/simple/print stats ?name=… interval=…` | `network.Client.QueueStatsByNameStream` |
+| `/queue/simple/print stats ?dynamic=false interval=…` | `network.Client.ParentQueueStatsStream` |
 | `/queue/simple/print ?dynamic=false` | `network.Client.QueueSimpleStatic` |
 | `/queue/simple/print ?name=…` | `network.Client.QueueSimpleByName` |
 | `/queue/simple/remove` | `network.Client.QueueSimpleRemove` |

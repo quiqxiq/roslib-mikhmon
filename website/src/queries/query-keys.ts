@@ -30,6 +30,7 @@ export const queryKeys = {
     resource: (deviceId: string) => ['system', 'resource', deviceId] as const,
     routerboard: (deviceId: string) => ['system', 'routerboard', deviceId] as const,
     clock: (deviceId: string) => ['system', 'clock', deviceId] as const,
+    license: (deviceId: string) => ['system', 'license', deviceId] as const,
     scripts: (deviceId: string) => ['system', 'scripts', deviceId] as const,
     schedulers: (deviceId: string) => ['system', 'schedulers', deviceId] as const,
   },
@@ -37,12 +38,15 @@ export const queryKeys = {
     query: (deviceId: string, key: string) => ['history', deviceId, key] as const,
   },
   reports: {
-    sales: (deviceId: string, from?: string, to?: string) =>
-      ['reports', 'sales', deviceId, from ?? '', to ?? ''] as const,
-    summary: (deviceId: string, date?: string) =>
-      ['reports', 'summary', deviceId, date ?? ''] as const,
+    selling: (deviceId: string, month?: string) =>
+      ['reports', 'selling', deviceId, month ?? ''] as const,
+    today: (deviceId: string) => ['reports', 'selling', 'today', deviceId] as const,
+    summary: (deviceId: string, month?: string) =>
+      ['reports', 'summary', deviceId, month ?? ''] as const,
   },
   profileConfig: {
     all: (deviceId: string) => ['profile-configs', deviceId] as const,
+    byName: (deviceId: string, name: string) =>
+      ['profile-configs', deviceId, name] as const,
   },
 }

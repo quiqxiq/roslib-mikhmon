@@ -3,10 +3,12 @@ import { computed } from 'vue'
 import Icon from '@/components/ui/Icon.vue'
 import { fmtAgoFromMs } from '@/utils/fmt'
 import type { IconName } from '@/components/ui/icons'
+import type { Transaction } from '@/types/report'
+import type { HotspotSession } from '@/types/hotspot'
 
 const props = defineProps<{
-  sales?: any[]
-  active?: any[]
+  sales?: Transaction[]
+  active?: HotspotSession[]
 }>()
 
 type ActivityType = 'login' | 'sale'
@@ -25,32 +27,29 @@ const map: Record<ActivityType, { icon: IconName; color: string; bg: string }> =
 
 const items = computed<ActivityItem[]>(() => {
   const list: ActivityItem[] = []
-  
-  // 1. Tambah real sales (dari database)
+
+  // 1. Tambah transaksi penjualan (Transaction shape — sale_date / created_at).
   const salesList = props.sales ?? []
   salesList.forEach((s) => {
     list.push({
       type: 'sale',
       user: s.username || 'voucher',
-      detail: `Voucher ${s.profile} terjual`,
-      time: new Date(s.soldAt),
+      detail: `Voucher ${s.profile ?? '—'} terjual`,
+      time: s.created_at ? new Date(s.created_at) : new Date(),
     })
   })
-  
-  // 2. Tambah real active sessions (dari router)
+
+  // 2. Tambah real active sessions (dari router).
   const activeList = props.active ?? []
   activeList.forEach((u) => {
-    // Sesi aktif dianggap login terkini
     list.push({
       type: 'login',
-      user: u.user || u.name || 'Hotspot User',
+      user: u.user || 'Hotspot User',
       detail: `Terhubung dari ${u.address || 'RouterOS'}`,
-      // Kita umpamakan timestamp aktif adalah sekarang/recent
       time: new Date(),
     })
   })
-  
-  // Urutkan berdasarkan waktu terbaru
+
   return list.sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 6)
 })
 
@@ -66,8 +65,8 @@ function cfg(a: ActivityItem) {
       <span class="text-xs">Belum ada aktivitas</span>
     </div>
     <div
-      v-else
       v-for="(a, i) in items"
+      v-else
       :key="i"
       class="row-hover flex items-center gap-2.5 rounded-lg px-1.5 py-2"
     >

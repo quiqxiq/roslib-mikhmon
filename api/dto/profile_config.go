@@ -48,3 +48,22 @@ func FromModelProfileConfig(cfg model.HotspotProfileConfig) ProfileConfigRespons
 		UpdatedAt:   cfg.UpdatedAt,
 	}
 }
+
+// ProfileConfigSyncResponse adalah ringkasan hasil sync profile router → DB.
+//
+//   - Synced: profile yang sudah ada di DB (tidak ditimpa, operator value
+//     dipertahankan).
+//   - Created: profile router baru yang di-insert dengan default
+//     ExpiryMode="0", Price=0. Operator perlu PUT untuk set price/mode.
+//   - Orphan: config DB yang profile-nya sudah hilang dari router.
+//     Tidak dihapus otomatis — operator yang putuskan via DELETE.
+//   - Injected: profile yang on-login script-nya berhasil di-push ke router.
+//   - InjectFailed: profile yang gagal di-inject (router error, dsb),
+//     biasanya berisi pesan ringkas "<profile>: <error>". Tidak fatal.
+type ProfileConfigSyncResponse struct {
+	Synced       []string `json:"synced"`
+	Created      []string `json:"created"`
+	Orphan       []string `json:"orphan"`
+	Injected     []string `json:"injected"`
+	InjectFailed []string `json:"inject_failed"`
+}

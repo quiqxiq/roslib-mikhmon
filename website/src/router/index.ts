@@ -12,10 +12,10 @@ router.beforeEach((to) => {
   const requiresAuth = to.matched.some((r) => r.meta.auth === true)
   const disallowsAuth = to.matched.some((r) => r.meta.auth === false)
 
-  if (requiresAuth && !auth.accessToken) {
+  if (requiresAuth && !auth.access_token) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
-  if (disallowsAuth && auth.accessToken) {
+  if (disallowsAuth && auth.access_token) {
     return { name: 'overview' }
   }
   return true

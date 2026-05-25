@@ -83,6 +83,27 @@
       '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
       '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
 
+/devices/{device_id}/system/license:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System]
+    summary: Get license info
+    description: Snapshot `/system/license` — software-id, nlevel, features.
+    responses:
+      '200':
+        description: License snapshot
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/system.yaml#/SystemLicenseResponse' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }
+
 /devices/{device_id}/system/reboot:
   parameters:
     - $ref: '../components/parameters.yaml#/DeviceIdPath'

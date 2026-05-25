@@ -2,7 +2,7 @@ export interface HistoryQuery {
   measurement: string
   start: string
   stop?: string
-  windowMs?: number
+  window_ms?: number
   filter?: Record<string, string>
 }
 

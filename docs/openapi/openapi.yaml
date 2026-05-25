@@ -28,7 +28,7 @@ info:
     | `TIMEOUT` | 504 | `context.DeadlineExceeded` |
     | `CANCELED` | 499 | `context.Canceled` |
     | `INTERNAL` | 500 | uncategorized / panic recovery |
-    | `DEVICE_NOT_FOUND` | 404 | device middleware: slug tidak terhubung |
+    | `DEVICE_NOT_FOUND` | 404 | device middleware: device ID tidak terhubung |
     | `SERVICE_UNAVAILABLE` | 503 | InfluxDB / dependency lain down |
 
     Setiap response menyertakan header `X-Request-ID` (16-char hex) untuk
@@ -81,7 +81,7 @@ servers:
 tags:
   - name: Devices
     description: |
-      CRUD device (slug, address, credential). Tidak butuh router fisik
+      CRUD device (address, credential). Tidak butuh router fisik
       nyala — endpoint ini hanya menyentuh database.
   - name: System
     description: |
@@ -132,6 +132,12 @@ tags:
     description: |
       Konfigurasi mikhmon-local per hotspot profile (validity, harga,
       expiry mode, lock MAC). Terpisah dari profile router-side.
+  - name: Webhook
+    description: |
+      Endpoint internal yang dipanggil oleh on-login script MikroTik
+      via `/tool/fetch`. **TIDAK pakai JWT** — router tidak bisa pegang
+      token. **MVP**: tidak ada IP whitelist atau shared secret. Pakai
+      firewall rule supaya hanya reachable dari router.
 
 security:
   - bearerAuth: []
@@ -166,10 +172,15 @@ paths:
     $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1routerboard'
   /devices/{device_id}/system/clock:
     $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1clock'
+  /devices/{device_id}/system/license:
+    $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1license'
   /devices/{device_id}/system/reboot:
     $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1reboot'
   /devices/{device_id}/system/shutdown:
     $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1shutdown'
+  /devices/{device_id}/ping:
+    $ref: './paths/ping.yaml#/~1devices~1{device_id}~1ping'
+
   /devices/{device_id}/system/logging/by-prefix/{prefix}:
     $ref: './paths/system.yaml#/~1devices~1{device_id}~1system~1logging~1by-prefix~1{prefix}'
   /devices/{device_id}/system/logging/hotspot-disk:
@@ -212,8 +223,14 @@ paths:
 
   /devices/{device_id}/hotspot/profile-configs:
     $ref: './paths/profile-configs.yaml#/~1devices~1{device_id}~1hotspot~1profile-configs'
+  /devices/{device_id}/hotspot/profile-configs/sync:
+    $ref: './paths/profile-configs.yaml#/~1devices~1{device_id}~1hotspot~1profile-configs~1sync'
   /devices/{device_id}/hotspot/profile-configs/{profile_name}:
     $ref: './paths/profile-configs.yaml#/~1devices~1{device_id}~1hotspot~1profile-configs~1{profile_name}'
+
+  # Webhook endpoint untuk on-login script (TIDAK pakai JWT).
+  /hook/hotspot/login/{device_id}:
+    $ref: './paths/hook.yaml#/~1hook~1hotspot~1login~1{device_id}'
 
   /devices/{device_id}/hotspot/profiles:
     $ref: './paths/hotspot-profiles.yaml#/~1devices~1{device_id}~1hotspot~1profiles'
@@ -315,8 +332,18 @@ paths:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1interfaces~1{name}~1traffic'
   /devices/{device_id}/stream/network/interfaces/stats:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1interfaces~1stats'
+  /devices/{device_id}/stream/ping:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1ping'
+
+  /devices/{device_id}/stream/system/routerboard:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1system~1routerboard'
+
   /devices/{device_id}/stream/network/queues/stats:
     $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1queues~1stats'
+  /devices/{device_id}/stream/network/queues/stats/{name}:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1queues~1stats~1{name}'
+  /devices/{device_id}/stream/network/queues/parents/stats:
+    $ref: './paths/stream.yaml#/~1devices~1{device_id}~1stream~1network~1queues~1parents~1stats'
 
   /devices/{device_id}/history/resource:
     $ref: './paths/history.yaml#/~1devices~1{device_id}~1history~1resource'
@@ -376,6 +403,7 @@ components:
     SystemResourceResponse:    { $ref: './schemas/system.yaml#/SystemResourceResponse' }
     SystemRouterboardResponse: { $ref: './schemas/system.yaml#/SystemRouterboardResponse' }
     SystemClockResponse:       { $ref: './schemas/system.yaml#/SystemClockResponse' }
+    SystemLicenseResponse:     { $ref: './schemas/system.yaml#/SystemLicenseResponse' }
     ScriptResponse:            { $ref: './schemas/system.yaml#/ScriptResponse' }
     ScriptCreateRequest:       { $ref: './schemas/system.yaml#/ScriptCreateRequest' }
     ScriptUpdateRequest:       { $ref: './schemas/system.yaml#/ScriptUpdateRequest' }
@@ -436,6 +464,12 @@ components:
     LogEvent:                  { $ref: './schemas/stream-events.yaml#/LogEvent' }
     InterfaceStatsEvent:       { $ref: './schemas/stream-events.yaml#/InterfaceStatsEvent' }
     QueueStatsEvent:           { $ref: './schemas/stream-events.yaml#/QueueStatsEvent' }
+    RouterboardEvent:          { $ref: './schemas/stream-events.yaml#/RouterboardEvent' }
+    PingEvent:                 { $ref: './schemas/stream-events.yaml#/PingEvent' }
+
+    # Ping
+    PingResult:                { $ref: './schemas/ping.yaml#/PingResult' }
+    PingSummary:               { $ref: './schemas/ping.yaml#/PingSummary' }
 
     # Log
     LogEntryResponse:          { $ref: './schemas/log.yaml#/LogEntryResponse' }

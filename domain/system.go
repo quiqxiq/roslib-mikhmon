@@ -74,6 +74,13 @@ type Scheduler struct {
 	RunCount  int
 }
 
+// SystemLicense = /system/license/print.
+type SystemLicense struct {
+	SoftwareID string
+	NLevel     string
+	Features   string
+}
+
 // Script = row /system/script/print.
 //
 // Mikhmon menyimpan 2 jenis: transaksi (comment="mikhmon") dan

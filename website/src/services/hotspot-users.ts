@@ -23,10 +23,10 @@ export const hotspotUsersService = {
       profile?: string
       server?: string
       disabled?: boolean
-      limitUptime?: string
-      limitBytesTotal?: number
-      limitBytesIn?: number
-      limitBytesOut?: number
+      limit_uptime?: string
+      limit_bytes_total?: number
+      limit_bytes_in?: number
+      limit_bytes_out?: number
       comment?: string
     },
   ): Promise<HotspotUser> {
@@ -43,12 +43,12 @@ export const hotspotUsersService = {
       profile?: string
       server?: string
       disabled?: boolean
-      limitUptime?: string
-      limitBytesTotal?: number
-      limitBytesIn?: number
-      limitBytesOut?: number
+      limit_uptime?: string
+      limit_bytes_total?: number
+      limit_bytes_in?: number
+      limit_bytes_out?: number
       comment?: string | null
-      macAddress?: string | null
+      mac_address?: string | null
     },
   ): Promise<HotspotUser> {
     const { data } = await http.patch<ApiEnvelope<HotspotUser>>(`${base(deviceId)}/${id}`, payload)

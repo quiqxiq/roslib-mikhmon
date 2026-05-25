@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/quiqxiq/roslib-mikhmon/store/model"
 	"gorm.io/gorm"
@@ -15,6 +16,15 @@ type TransactionStore interface {
 	Create(ctx context.Context, tx *model.Transaction) error
 	ListByDevice(ctx context.Context, deviceID uint, month string) ([]model.Transaction, error)
 	ListByDeviceDate(ctx context.Context, deviceID uint, date string) ([]model.Transaction, error)
+	// ExistsByUserComment cek apakah ada transaksi untuk kombinasi
+	// (device_id, username, comment) — dipakai webhook handler untuk
+	// dedup re-login (hanya first login yang ter-record).
+	ExistsByUserComment(ctx context.Context, deviceID uint, username, comment string) (bool, error)
+	// ExistsByUserCommentSince cek apakah ada transaksi (device_id, username, comment)
+	// yang dibuat SETELAH since. Dipakai dedup re-login berbasis window validity:
+	// re-login dalam window yang sama tidak ter-record ganda, tapi pembelian baru
+	// (setelah window habis) tetap ter-record.
+	ExistsByUserCommentSince(ctx context.Context, deviceID uint, username, comment string, since time.Time) (bool, error)
 }
 
 type gormTransactionStore struct{ db *gorm.DB }
@@ -41,4 +51,29 @@ func (s *gormTransactionStore) ListByDeviceDate(ctx context.Context, deviceID ui
 		Where("device_id = ? AND sale_date = ?", deviceID, date).
 		Order("created_at desc").Limit(defaultTransactionLimit).Find(&txs).Error
 	return txs, err
+}
+
+func (s *gormTransactionStore) ExistsByUserComment(
+	ctx context.Context, deviceID uint, username, comment string,
+) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).
+		Model(&model.Transaction{}).
+		Where("device_id = ? AND username = ? AND comment = ?", deviceID, username, comment).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
+}
+
+func (s *gormTransactionStore) ExistsByUserCommentSince(
+	ctx context.Context, deviceID uint, username, comment string, since time.Time,
+) (bool, error) {
+	var count int64
+	err := s.db.WithContext(ctx).
+		Model(&model.Transaction{}).
+		Where("device_id = ? AND username = ? AND comment = ? AND created_at > ?",
+			deviceID, username, comment, since).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
 }

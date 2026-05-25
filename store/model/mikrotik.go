@@ -10,7 +10,6 @@ import (
 // Status diupdate otomatis oleh DeviceManager setiap 30 detik.
 type MikrotikDevice struct {
 	ID          uint   `gorm:"primaryKey"`
-	Slug        string `gorm:"uniqueIndex;not null;size:64"` // identifier di URL: /devices/:slug
 	DisplayName string `gorm:"not null;size:128"`
 	Address     string `gorm:"not null;size:255"` // "192.168.88.1:8728"
 	Username    string `gorm:"not null;size:64"`
@@ -24,6 +23,7 @@ type MikrotikDevice struct {
 
 	// Config expiry service
 	ExpiryCheckInterval string `gorm:"default:'2m';size:16"`
+	TimeZone            string `gorm:"default:'';size:64"` // IANA tz name, e.g. "Asia/Jakarta". Kosong = UTC.
 	Active              bool   `gorm:"default:true"`
 
 	CreatedAt time.Time

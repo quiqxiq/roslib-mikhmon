@@ -10,14 +10,18 @@ export type StreamPath =
   | 'ppp/inactive'
   | 'log'
   | 'system/resource'
+  | 'system/routerboard'
   | 'network/interfaces/stats'
   | 'network/queues/stats'
+  | `network/queues/stats/${string}`
+  | 'network/queues/parents/stats'
+  | 'ping'
 
 export function buildStreamUrl(deviceId: string, path: StreamPath | string): string {
   const auth = useAuthStore()
   const url = new URL(`${API_BASE_URL}/devices/${deviceId}/stream/${path}`, window.location.origin)
-  if (auth.accessToken) {
-    url.searchParams.set('access_token', auth.accessToken)
+  if (auth.access_token) {
+    url.searchParams.set('access_token', auth.access_token)
   }
   return url.toString()
 }

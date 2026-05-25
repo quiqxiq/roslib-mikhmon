@@ -18,11 +18,11 @@ type DeviceStore interface {
 	// mengelola device yang sedang dinonaktifkan tanpa di-soft-delete.
 	ListAll(ctx context.Context) ([]model.MikrotikDevice, error)
 	Get(ctx context.Context, id uint) (model.MikrotikDevice, error)
-	GetBySlug(ctx context.Context, slug string) (model.MikrotikDevice, error)
 	Create(ctx context.Context, d *model.MikrotikDevice) error
 	Update(ctx context.Context, d *model.MikrotikDevice) error
 	Delete(ctx context.Context, id uint) error
 	UpdateStatus(ctx context.Context, id uint, status, lastError string, lastSeen *time.Time) error
+	UpdateTimezone(ctx context.Context, id uint, tz string) error
 }
 
 type gormDeviceStore struct{ db *gorm.DB }
@@ -60,19 +60,6 @@ func (s *gormDeviceStore) ListAll(ctx context.Context) ([]model.MikrotikDevice, 
 func (s *gormDeviceStore) Get(ctx context.Context, id uint) (model.MikrotikDevice, error) {
 	var d model.MikrotikDevice
 	if err := s.db.WithContext(ctx).First(&d, id).Error; err != nil {
-		return d, err
-	}
-	p, err := decryptDevicePassword(d.Password)
-	if err != nil {
-		return d, err
-	}
-	d.Password = p
-	return d, nil
-}
-
-func (s *gormDeviceStore) GetBySlug(ctx context.Context, slug string) (model.MikrotikDevice, error) {
-	var d model.MikrotikDevice
-	if err := s.db.WithContext(ctx).Where("slug = ?", slug).First(&d).Error; err != nil {
 		return d, err
 	}
 	p, err := decryptDevicePassword(d.Password)
@@ -123,4 +110,9 @@ func (s *gormDeviceStore) UpdateStatus(ctx context.Context, id uint, status, las
 			"last_error": lastError,
 			"last_seen":  lastSeen,
 		}).Error
+}
+
+func (s *gormDeviceStore) UpdateTimezone(ctx context.Context, id uint, tz string) error {
+	return s.db.WithContext(ctx).Model(&model.MikrotikDevice{}).Where("id = ?", id).
+		Update("time_zone", tz).Error
 }

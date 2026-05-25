@@ -14,7 +14,7 @@ import (
 )
 
 // Report meng-handle endpoint laporan penjualan voucher.
-// Sumber data: tabel transactions (di-tulis oleh service/expiry).
+// Sumber data: tabel transactions (di-tulis oleh webhook on-login handler).
 //
 // Endpoint:
 //   - GET /reports/selling                — full list, filter by ?month=
@@ -38,27 +38,23 @@ func (h *Report) Register(g *gin.RouterGroup) {
 	r.GET("/selling.csv", h.SellingCSV)
 }
 
-// resolveDeviceID translate path param ":device_id" (slug) ke device ID
-// di tabel mikrotik_devices. Pattern sama dengan DeviceMiddleware tapi
-// kita perlu nilai uint untuk join ke transactions.device_id.
-func (h *Report) resolveDeviceID(c *gin.Context) (uint, bool) {
-	slug := c.Param("device_id")
-	if slug == "" {
-		WriteValidationErr(c, errStr("device_id required"))
-		return 0, false
-	}
-	d, err := h.DeviceStore.GetBySlug(c.Request.Context(), slug)
+// parseDeviceID ambil :device_id dari path (numeric). Tulis 400
+// kalau invalid dan return ok=false.
+func (h *Report) parseDeviceID(c *gin.Context) (uint, bool) {
+	raw := c.Param("device_id")
+	n, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
-		WriteErr(c, err)
+		c.AbortWithStatusJSON(http.StatusBadRequest,
+			dto.Err("INVALID_ID", "invalid device id", raw))
 		return 0, false
 	}
-	return d.ID, true
+	return uint(n), true
 }
 
 // SellingList: GET /reports/selling?month=jan2025
 // Kalau ?month kosong, return semua transaksi device tsb.
 func (h *Report) SellingList(c *gin.Context) {
-	deviceID, ok := h.resolveDeviceID(c)
+	deviceID, ok := h.parseDeviceID(c)
 	if !ok {
 		return
 	}
@@ -75,7 +71,7 @@ func (h *Report) SellingList(c *gin.Context) {
 // SellingToday: GET /reports/selling/today
 // SaleDate format mikhmon = "jan/02/2006" (lowercase month).
 func (h *Report) SellingToday(c *gin.Context) {
-	deviceID, ok := h.resolveDeviceID(c)
+	deviceID, ok := h.parseDeviceID(c)
 	if !ok {
 		return
 	}
@@ -96,7 +92,7 @@ func (h *Report) SellingToday(c *gin.Context) {
 // SellingSummary: GET /reports/selling/summary?month=jan2025&include_transactions=true
 // Agregat sederhana untuk dashboard.
 func (h *Report) SellingSummary(c *gin.Context) {
-	deviceID, ok := h.resolveDeviceID(c)
+	deviceID, ok := h.parseDeviceID(c)
 	if !ok {
 		return
 	}
@@ -119,7 +115,7 @@ func (h *Report) SellingSummary(c *gin.Context) {
 // atau ?date=jan/05/2025.
 // Header: sale_date,sale_time,username,profile,price,sell_price,validity,mac,ip,comment.
 func (h *Report) SellingCSV(c *gin.Context) {
-	deviceID, ok := h.resolveDeviceID(c)
+	deviceID, ok := h.parseDeviceID(c)
 	if !ok {
 		return
 	}

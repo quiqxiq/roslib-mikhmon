@@ -27,7 +27,7 @@ type Service struct {
 	log    *logrus.Logger
 
 	mu      sync.Mutex
-	cancels map[string]context.CancelFunc
+	cancels map[uint]context.CancelFunc
 	rootCtx context.Context
 }
 
@@ -36,7 +36,7 @@ func New(cli *influxdb3.Client, mgr *devmgr.Manager, log *logrus.Logger) *Servic
 		cli:     cli,
 		devMgr:  mgr,
 		log:     log,
-		cancels: make(map[string]context.CancelFunc),
+		cancels: make(map[uint]context.CancelFunc),
 	}
 }
 
@@ -45,30 +45,30 @@ func (s *Service) Start(ctx context.Context) {
 	s.rootCtx = ctx
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for slug, cs := range s.devMgr.ListActive() {
-		s.startLocked(slug, cs)
+	for deviceID, cs := range s.devMgr.ListActive() {
+		s.startLocked(deviceID, cs)
 	}
 }
 
 // StartDevice memulai collection untuk device baru. Idempotent.
 func (s *Service) StartDevice(d model.MikrotikDevice) {
-	cs, err := s.devMgr.Get(d.Slug)
+	cs, err := s.devMgr.Get(d.ID)
 	if err != nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.cancels[d.Slug]; exists {
+	if _, exists := s.cancels[d.ID]; exists {
 		return
 	}
-	s.startLocked(d.Slug, cs)
+	s.startLocked(d.ID, cs)
 }
 
 // StopDevice menghentikan collection untuk device yang dihapus.
-func (s *Service) StopDevice(slug string) {
+func (s *Service) StopDevice(deviceID uint) {
 	s.mu.Lock()
-	cancel, ok := s.cancels[slug]
-	delete(s.cancels, slug)
+	cancel, ok := s.cancels[deviceID]
+	delete(s.cancels, deviceID)
 	s.mu.Unlock()
 	if ok {
 		cancel()
@@ -84,10 +84,11 @@ type startedStream struct {
 	stop func()
 }
 
-func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
+func (s *Service) startLocked(deviceID uint, cs *devmgr.ClientSet) {
 	ctx, cancel := context.WithCancel(s.rootCtx)
-	s.cancels[slug] = cancel
-	log := s.log.WithField("device", slug)
+	s.cancels[deviceID] = cancel
+	devStr := strconv.FormatUint(uint64(deviceID), 10)
+	log := s.log.WithField("device", devStr)
 
 	var started []startedStream
 	track := func(id string, err error, stopFn func()) {
@@ -100,7 +101,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 
 	// ── system_resource — system resource print interval=5s ──────────────
 	resW := roslibinflux.NewWriter(s.cli, "system_resource",
-		fixedTags(slug),
+		fixedTags(deviceID),
 		func(sen *roslib.Sentence) map[string]any {
 			return map[string]any{
 				"cpu_load":     sen.IntOr("cpu-load", 0),
@@ -110,7 +111,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	resID := "metrics:" + slug + ":resource"
+	resID := "metrics:" + devStr + ":resource"
 	track(resID,
 		cs.Sys.MonitorResource(resID, 5*time.Second, roslibinflux.PollSink(resW, log)),
 		func() { cs.Sys.StopMonitor(resID) },
@@ -119,7 +120,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	// ── interface_stats — interface print stats interval=5s ──────────────
 	ifaceW := roslibinflux.NewWriter(s.cli, "interface_stats",
 		func(sen *roslib.Sentence) map[string]string {
-			return map[string]string{"device": slug, "iface": sen.Get("name")}
+			return map[string]string{"device": devStr, "iface": sen.Get("name")}
 		},
 		func(sen *roslib.Sentence) map[string]any {
 			return map[string]any{
@@ -130,7 +131,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	ifaceID := "metrics:" + slug + ":iface-stats"
+	ifaceID := "metrics:" + devStr + ":iface-stats"
 	ifaceSink := roslibinflux.StreamSink(ifaceW, log)
 	track(ifaceID,
 		cs.Net.InterfaceStatsStream(ifaceID, 5*time.Second, func(sen *roslib.Sentence) {
@@ -144,7 +145,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	// ── hotspot_user_bytes — ip/hotspot/user/print bytes interval=10s ────
 	ubW := roslibinflux.NewWriter(s.cli, "hotspot_user_bytes",
 		func(sen *roslib.Sentence) map[string]string {
-			return map[string]string{"device": slug, "user": sen.Get("name")}
+			return map[string]string{"device": devStr, "user": sen.Get("name")}
 		},
 		func(sen *roslib.Sentence) map[string]any {
 			return map[string]any{
@@ -153,7 +154,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	ubID := "metrics:" + slug + ":user-bytes"
+	ubID := "metrics:" + devStr + ":user-bytes"
 	ubSink := roslibinflux.StreamSink(ubW, log)
 	track(ubID,
 		cs.Hot.UserBytesStream(ubID, 10*time.Second, func(sen *roslib.Sentence) {
@@ -167,7 +168,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	// ── hotspot_user_packets — ip/hotspot/user/print packets interval=10s ─
 	upW := roslibinflux.NewWriter(s.cli, "hotspot_user_packets",
 		func(sen *roslib.Sentence) map[string]string {
-			return map[string]string{"device": slug, "user": sen.Get("name")}
+			return map[string]string{"device": devStr, "user": sen.Get("name")}
 		},
 		func(sen *roslib.Sentence) map[string]any {
 			return map[string]any{
@@ -176,7 +177,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	upID := "metrics:" + slug + ":user-packets"
+	upID := "metrics:" + devStr + ":user-packets"
 	upSink := roslibinflux.StreamSink(upW, log)
 	track(upID,
 		cs.Hot.UserPacketsStream(upID, 10*time.Second, func(sen *roslib.Sentence) {
@@ -192,7 +193,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	haW := roslibinflux.NewWriter(s.cli, "hotspot_active",
 		func(sen *roslib.Sentence) map[string]string {
 			return map[string]string{
-				"device": slug,
+				"device": devStr,
 				"user":   sen.Get("user"),
 				"server": sen.Get("server"),
 			}
@@ -205,7 +206,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	haID := "metrics:" + slug + ":hotspot-active"
+	haID := "metrics:" + devStr + ":hotspot-active"
 	haSink := roslibinflux.StreamSink(haW, log)
 	track(haID,
 		cs.Hot.ActiveStream(haID, func(sen *roslib.Sentence) {
@@ -220,7 +221,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	pppW := roslibinflux.NewWriter(s.cli, "ppp_active",
 		func(sen *roslib.Sentence) map[string]string {
 			return map[string]string{
-				"device":  slug,
+				"device":  devStr,
 				"name":    sen.Get("name"),
 				"service": sen.Get("service"),
 			}
@@ -231,7 +232,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	pppID := "metrics:" + slug + ":ppp-active"
+	pppID := "metrics:" + devStr + ":ppp-active"
 	pppSink := roslibinflux.StreamSink(pppW, log)
 	track(pppID,
 		cs.PPP.ActiveStream(pppID, func(sen *roslib.Sentence) {
@@ -246,7 +247,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 	// Field "bytes" dari RouterOS berformat "in/out" → di-parse jadi dua field.
 	qW := roslibinflux.NewWriter(s.cli, "queue_stats",
 		func(sen *roslib.Sentence) map[string]string {
-			return map[string]string{"device": slug, "queue": sen.Get("name")}
+			return map[string]string{"device": devStr, "queue": sen.Get("name")}
 		},
 		func(sen *roslib.Sentence) map[string]any {
 			bin, bout := splitInOut(sen.Get("bytes"))
@@ -259,7 +260,7 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 			}
 		},
 	)
-	qID := "metrics:" + slug + ":queue-stats"
+	qID := "metrics:" + devStr + ":queue-stats"
 	qSink := roslibinflux.StreamSink(qW, log)
 	track(qID,
 		cs.Net.QueueStatsStream(qID, 10*time.Second, func(sen *roslib.Sentence) {
@@ -285,10 +286,11 @@ func (s *Service) startLocked(slug string, cs *devmgr.ClientSet) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// fixedTags mengembalikan TagFn dengan satu tag device=slug.
-func fixedTags(slug string) roslibinflux.TagFn {
+// fixedTags mengembalikan TagFn dengan satu tag device=deviceID.
+func fixedTags(deviceID uint) roslibinflux.TagFn {
+	devStr := strconv.FormatUint(uint64(deviceID), 10)
 	return func(*roslib.Sentence) map[string]string {
-		return map[string]string{"device": slug}
+		return map[string]string{"device": devStr}
 	}
 }
 

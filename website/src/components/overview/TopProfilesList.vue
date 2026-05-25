@@ -2,32 +2,33 @@
 import { computed } from 'vue'
 import Icon from '@/components/ui/Icon.vue'
 import { fmtRpShort } from '@/utils/fmt'
+import type { Transaction } from '@/types/report'
 
 const props = defineProps<{
-  sales?: any[]
+  sales?: Transaction[]
 }>()
 
 const items = computed(() => {
   const list = props.sales ?? []
   const groups: Record<string, { count: number; total: number }> = {}
-  
+
   list.forEach((s) => {
     if (!s.profile) return
     if (!groups[s.profile]) {
       groups[s.profile] = { count: 0, total: 0 }
     }
     groups[s.profile].count++
-    groups[s.profile].total += s.price
+    groups[s.profile].total += s.sell_price || s.price
   })
-  
+
   const colors = ['cyan', 'violet', 'lime']
-  
+
   return Object.entries(groups)
     .map(([name, g], index) => ({
       name,
       sold: g.count,
       revenue: g.total,
-      color: colors[index % colors.length]
+      color: colors[index % colors.length],
     }))
     .sort((a, b) => b.sold - a.sold)
     .slice(0, 4)
@@ -64,7 +65,7 @@ function tone(color: string) {
       <Icon name="Ticket" :size="24" style="margin-bottom: 6px; opacity: 0.5" />
       <span class="text-xs">Belum ada data penjualan</span>
     </div>
-    <div v-else v-for="p in items" :key="p.name">
+    <div v-for="p in items" v-else :key="p.name">
       <div class="mb-1.5 flex items-baseline justify-between">
         <span class="flex items-center gap-2 text-[13px]">
           <span

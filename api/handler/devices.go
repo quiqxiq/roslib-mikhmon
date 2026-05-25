@@ -121,7 +121,7 @@ func (h *Devices) Update(c *gin.Context) {
 	// goroutine roslib lama benar-benar berhenti sebelum dial baru —
 	// kalau pakai Remove biasa, ada race di mana hook OnStatusChange
 	// lama masih emit "closed" setelah koneksi baru sudah connected.
-	h.DevMgr.RemoveAndWait(existing.Slug)
+	h.DevMgr.RemoveAndWait(existing.ID)
 	if err := h.DevMgr.Add(context.Background(), existing); err != nil {
 		// Reconnect gagal — record tetap tersimpan, kasih warning ke caller.
 		c.JSON(http.StatusOK, dto.OK(dto.DeviceWriteResponse{
@@ -151,7 +151,7 @@ func (h *Devices) Delete(c *gin.Context) {
 		WriteErr(c, err)
 		return
 	}
-	h.DevMgr.Remove(d.Slug)
+	h.DevMgr.Remove(d.ID)
 	WriteNoContent(c)
 }
 

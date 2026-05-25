@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,7 +34,7 @@ type Service struct {
 	log      *logrus.Logger
 
 	mu      sync.Mutex
-	cancels map[string]context.CancelFunc // key = device slug
+	cancels map[uint]context.CancelFunc // key = device ID
 	rootCtx context.Context
 }
 
@@ -52,7 +51,7 @@ func New(
 		profiles: profiles,
 		txStore:  txStore,
 		log:      log,
-		cancels:  make(map[string]context.CancelFunc),
+		cancels:  make(map[uint]context.CancelFunc),
 	}
 }
 
@@ -77,17 +76,17 @@ func (s *Service) Start(ctx context.Context) error {
 func (s *Service) StartDevice(d model.MikrotikDevice) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.cancels[d.Slug]; exists {
+	if _, exists := s.cancels[d.ID]; exists {
 		return
 	}
 	s.startLocked(d)
 }
 
 // StopDevice menghentikan checker untuk device yang dihapus.
-func (s *Service) StopDevice(slug string) {
+func (s *Service) StopDevice(deviceID uint) {
 	s.mu.Lock()
-	cancel, ok := s.cancels[slug]
-	delete(s.cancels, slug)
+	cancel, ok := s.cancels[deviceID]
+	delete(s.cancels, deviceID)
 	s.mu.Unlock()
 	if ok {
 		cancel()
@@ -96,7 +95,7 @@ func (s *Service) StopDevice(slug string) {
 
 func (s *Service) startLocked(d model.MikrotikDevice) {
 	ctx, cancel := context.WithCancel(s.rootCtx)
-	s.cancels[d.Slug] = cancel
+	s.cancels[d.ID] = cancel
 	go s.runChecker(ctx, d)
 }
 
@@ -118,7 +117,7 @@ func (s *Service) runChecker(ctx context.Context, d model.MikrotikDevice) {
 		normalInterval = 2 * time.Minute
 	}
 
-	log := s.log.WithField("device", d.Slug)
+	log := s.log.WithField("device", d.DisplayName)
 	log.Info("expiry: checker started")
 
 	var (
@@ -168,7 +167,17 @@ func (s *Service) runChecker(ctx context.Context, d model.MikrotikDevice) {
 
 // checkDevice memeriksa semua user di satu device dan mengeksekusi aksi expired.
 func (s *Service) checkDevice(ctx context.Context, d model.MikrotikDevice) error {
-	cs, err := s.devMgr.Get(d.Slug)
+	// Resolve timezone router — diisi oleh devmgr saat connect. Fallback UTC.
+	loc := time.UTC
+	if d.TimeZone != "" {
+		if l, err := time.LoadLocation(d.TimeZone); err == nil {
+			loc = l
+		} else {
+			s.log.WithField("tz", d.TimeZone).Warn("expiry: invalid timezone, fallback UTC")
+		}
+	}
+
+	cs, err := s.devMgr.Get(d.ID)
 	if err != nil {
 		return err
 	}
@@ -180,7 +189,7 @@ func (s *Service) checkDevice(ctx context.Context, d model.MikrotikDevice) error
 
 	now := time.Now()
 	for _, u := range users {
-		expiry, ok := ParseExpiry(u.Comment)
+		expiry, ok := ParseExpiry(u.Comment, loc)
 		if !ok {
 			continue
 		}
@@ -188,9 +197,13 @@ func (s *Service) checkDevice(ctx context.Context, d model.MikrotikDevice) error
 			continue
 		}
 
-		// User expired — ambil konfigurasi mode dari DB
-		cfg, err := s.profiles.Get(ctx, d.ID, u.Profile)
+		// User expired — ambil konfigurasi mode dari DB. Kalau belum dikonfigurasi,
+		// skip (bukan default "rem") supaya tidak ada tindakan tanpa sepengetahuan operator.
+		cfg, err := s.profiles.GetByName(ctx, d.ID, u.Profile)
 		if err != nil {
+			if errors.Is(err, store.ErrProfileConfigNotFound) {
+				continue
+			}
 			s.log.WithError(err).Warnf("expiry: cannot get profile config for %s", u.Profile)
 			continue
 		}
@@ -240,30 +253,5 @@ func (s *Service) executeExpiry(
 		return nil
 	}
 
-	// Catat transaksi jika mode berakhiran "c".
-	// Format tanggal mengikuti konvensi mikhmonv3 (lowercase month name)
-	// supaya kompatibel dengan migrasi data lama. Pakai strings.ToLower
-	// terhadap output Go time.Format dengan token "Jan" — kalau langsung
-	// "jan" lowercase di layout, Go memperlakukan sebagai literal string
-	// dan output bulan selalu "jan" (bug existing).
-	if strings.HasSuffix(cfg.ExpiryMode, "c") {
-		now := time.Now()
-		tx := &model.Transaction{
-			DeviceID:  d.ID,
-			SaleDate:  strings.ToLower(now.Format("Jan/02/2006")),
-			SaleTime:  now.Format("15:04:05"),
-			SaleMonth: strings.ToLower(now.Format("Jan2006")),
-			Username:  userName,
-			Price:     cfg.Price,
-			SellPrice: cfg.SellPrice,
-			MAC:       mac,
-			Validity:  cfg.Validity,
-			Profile:   profile,
-			Comment:   "expiry-auto",
-		}
-		if err := s.txStore.Create(ctx, tx); err != nil {
-			s.log.WithError(err).Warn("expiry: failed to record transaction")
-		}
-	}
 	return nil
 }

@@ -4,22 +4,22 @@ export interface NetworkInterface {
   type: string
   running: boolean
   disabled: boolean
-  macAddress?: string
-  rxBytes?: number
-  txBytes?: number
+  mac_address?: string
+  rx_bytes?: number
+  tx_bytes?: number
 }
 
 export interface IPPool {
   id: string
   name: string
   ranges: string
-  nextPool?: string
+  next_pool?: string
 }
 
 export interface ARPEntry {
   id: string
   address: string
-  macAddress: string
+  mac_address: string
   interface: string
   dynamic: boolean
 }
@@ -27,9 +27,9 @@ export interface ARPEntry {
 export interface DHCPLease {
   id: string
   address: string
-  macAddress: string
-  clientId?: string
-  hostName?: string
+  mac_address: string
+  client_id?: string
+  host_name?: string
   server?: string
   status: string
 }
@@ -38,7 +38,7 @@ export interface SimpleQueue {
   id: string
   name: string
   target: string
-  maxLimit?: string
-  burstLimit?: string
+  max_limit?: string
+  burst_limit?: string
   disabled?: boolean
 }

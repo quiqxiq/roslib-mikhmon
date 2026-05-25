@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -156,10 +157,10 @@ func main() {
 			metricsSvc.StartDevice(d)
 		}
 	}
-	devMgr.OnDeviceRemoved = func(slug string) {
-		expSvc.StopDevice(slug)
+	devMgr.OnDeviceRemoved = func(deviceID uint) {
+		expSvc.StopDevice(deviceID)
 		if metricsSvc != nil {
-			metricsSvc.StopDevice(slug)
+			metricsSvc.StopDevice(deviceID)
 		}
 	}
 
@@ -173,6 +174,17 @@ func main() {
 	defer heavyLim.Close()
 
 	hub := sse.NewHubWithCaps(rateCfg.SSEMaxPerTopic, rateCfg.SSEMaxPerDevice)
+
+	// GO_SERVICE_URL: URL absolut Go service yang reachable dari MikroTik
+	// router. Dipakai untuk membentuk webhook URL di on-login script.
+	// Kalau kosong, webhook block tidak di-emit di script (selling record
+	// di-skip). Format: "http://<host>:<port>" tanpa path.
+	goServiceURL := strings.TrimSpace(os.Getenv("GO_SERVICE_URL"))
+	if goServiceURL == "" {
+		log.Warn("GO_SERVICE_URL not set — selling record webhook akan di-skip di on-login script")
+	} else {
+		log.WithField("url", goServiceURL).Info("on-login webhook target")
+	}
 
 	// ── HTTP Server ───────────────────────────────────────────────────────
 	deps := &api.Deps{
@@ -190,6 +202,7 @@ func main() {
 		DevMgr:       devMgr,
 		Hub:          hub,
 		InfluxReader: influxReader,
+		GoServiceURL: goServiceURL,
 	}
 
 	handler := api.NewServer(deps)

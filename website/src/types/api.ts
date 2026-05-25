@@ -15,7 +15,7 @@ export interface ApiErrorEnvelope {
 
 export interface Pagination {
   page: number
-  pageSize: number
+  page_size: number
   total: number
 }
 

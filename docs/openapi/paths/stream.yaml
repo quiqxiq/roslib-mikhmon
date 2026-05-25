@@ -219,6 +219,34 @@
             schema: { $ref: '../schemas/stream-events.yaml#/InterfaceStatsEvent' }
       '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
 
+/devices/{device_id}/stream/ping:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [Streaming]
+    summary: Stream ICMP ping (SSE inherent)
+    description: |
+      Inherent stream `/ping address=<addr>` tanpa count. Emit tiap reply
+      sebagai event `ping`. Frontend poll via SSE — tidak perlu interval
+      query param. Auto-stop saat last subscriber leave (/cancel ke router).
+    parameters:
+      - name: address
+        in: query
+        required: true
+        description: Target IP address.
+        schema:
+          type: string
+          example: "8.8.8.8"
+    x-event-types: [ping]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/PingEvent' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
 /devices/{device_id}/stream/network/queues/stats:
   parameters:
     - $ref: '../components/parameters.yaml#/DeviceIdPath'
@@ -238,4 +266,68 @@
         content:
           text/event-stream:
             schema: { $ref: '../schemas/stream-events.yaml#/QueueStatsEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/network/queues/stats/{name}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - name: name
+      in: path
+      required: true
+      description: Nama queue (mis. `<hotspot-user01>`).
+      schema: { type: string, example: "<hotspot-user01>" }
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream queue stats by name (SSE polling)
+    description: |
+      Polling `/queue/simple/print stats ?name=<name>` per `?interval=`
+      (default `1s`). Event `stats` dengan payload `QueueStatsEvent`.
+      Proplist diatur untuk memperkecil payload.
+    x-event-types: [stats]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/QueueStatsEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/network/queues/parents/stats:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream parent queue stats (SSE polling)
+    description: |
+      Polling `/queue/simple/print stats ?dynamic=false` per `?interval=`
+      (default `1s`). Hanya queue user-defined (bukan auto-generated).
+      Event `stats` dengan payload `QueueStatsEvent`.
+    x-event-types: [stats]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/QueueStatsEvent' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+
+/devices/{device_id}/stream/system/routerboard:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+    - $ref: '../components/parameters.yaml#/IntervalQuery'
+  get:
+    tags: [Streaming]
+    summary: Stream routerboard snapshot (SSE polling)
+    description: |
+      Polling `/system/routerboard/print` per `?interval=` (default `2s`).
+      Event `routerboard` dengan payload `RouterboardEvent`.
+    x-event-types: [routerboard]
+    responses:
+      '200':
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema: { $ref: '../schemas/stream-events.yaml#/RouterboardEvent' }
       '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }

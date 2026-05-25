@@ -30,6 +30,24 @@ func (c *Client) QueueStatsStream(id string, interval time.Duration, h func(*ros
 		Interval(interval).Stream(id, h)
 }
 
+// QueueStatsByNameStream → /queue/simple/print stats ?name=<name> interval=<d> (analisis §1.10).
+// Counter per queue difilter by name. Proplist memperkecil payload.
+func (c *Client) QueueStatsByNameStream(id, name string, interval time.Duration, h func(*roslib.Sentence)) error {
+	return c.dev.Path("/queue/simple").Print().Stats().
+		Where("name", name).
+		Proplist("name", "target", "parent", "max-limit", "limit-at", "bytes", "packets", "rate", "total-rate", "queued-bytes", "queued-packets", "dropped").
+		Interval(interval).Stream(id, h)
+}
+
+// ParentQueueStatsStream → /queue/simple/print stats ?dynamic=false interval=<d> (analisis §1.10).
+// Hanya queue user-defined (bukan auto-generated). Proplist memperkecil payload.
+func (c *Client) ParentQueueStatsStream(id string, interval time.Duration, h func(*roslib.Sentence)) error {
+	return c.dev.Path("/queue/simple").Print().Stats().
+		Where("dynamic", "false").
+		Proplist("name", "target", "parent", "max-limit", "limit-at", "bytes", "packets", "rate", "total-rate", "queued-bytes", "queued-packets", "dropped").
+		Interval(interval).Stream(id, h)
+}
+
 // QueueSimpleWithStats → /queue/simple/print stats interval=<d> (analisis §1.10).
 type QueueSimpleWithStats = domain.QueueSimpleWithStats
 

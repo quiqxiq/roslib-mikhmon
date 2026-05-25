@@ -76,9 +76,9 @@ const secretCols = computed<ColumnDef<PPPSecret>[]>(() => [
     meta: { mobileHidden: true },
   },
   {
-    accessorKey: 'remoteAddress',
+    accessorKey: 'remote_address',
     header: 'Remote Address',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.remoteAddress || '—'),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.remote_address || '—'),
     meta: { mobileHidden: true },
   },
   {
@@ -211,23 +211,23 @@ function reload() {
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div>
               <div style="color: var(--muted)">Rate Limit</div>
-              <div class="mono font-medium">{{ p.rateLimit || 'unlimited' }}</div>
+              <div class="mono font-medium">{{ p.rate_limit || 'unlimited' }}</div>
             </div>
             <div>
               <div style="color: var(--muted)">Local Address</div>
-              <div class="mono font-medium">{{ p.localAddress || '—' }}</div>
+              <div class="mono font-medium">{{ p.local_address || '—' }}</div>
             </div>
             <div>
               <div style="color: var(--muted)">Remote Address</div>
-              <div class="mono font-medium">{{ p.remoteAddress || '—' }}</div>
+              <div class="mono font-medium">{{ p.remote_address || '—' }}</div>
             </div>
             <div>
               <div style="color: var(--muted)">Session Timeout</div>
-              <div class="mono font-medium">{{ p.sessionTimeout || '—' }}</div>
+              <div class="mono font-medium">{{ p.session_timeout || '—' }}</div>
             </div>
             <div>
               <div style="color: var(--muted)">Only One</div>
-              <div class="mono font-medium">{{ p.onlyOne || '—' }}</div>
+              <div class="mono font-medium">{{ p.only_one || '—' }}</div>
             </div>
           </div>
         </Card>

@@ -80,7 +80,7 @@ func TestParseExpiry(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := ParseExpiry(tc.comment)
+			got, ok := ParseExpiry(tc.comment, time.UTC)
 			if ok != tc.wantOK {
 				t.Fatalf("ParseExpiry(%q) ok = %v, want %v", tc.comment, ok, tc.wantOK)
 			}

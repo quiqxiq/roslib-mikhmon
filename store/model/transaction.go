@@ -20,7 +20,7 @@ type Transaction struct {
 	MAC       string `gorm:"size:17"`
 	Validity  string `gorm:"size:16"`
 	Profile   string `gorm:"index;size:64"`
-	Comment   string `gorm:"size:255"`
+	Comment   string `gorm:"index;size:255"`
 
 	CreatedAt time.Time
 }

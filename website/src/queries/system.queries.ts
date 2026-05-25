@@ -21,6 +21,30 @@ export function useResourceQuery(deviceId: MaybeRefOrGetter<string | null>) {
   })
 }
 
+export function useRouterboardQuery(deviceId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: queryKeys.system.routerboard(String(toValue(deviceId))),
+    queryFn: () => systemService.routerboard(String(toValue(deviceId))),
+    enabled: () => Boolean(toValue(deviceId)),
+  })
+}
+
+export function useClockQuery(deviceId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: queryKeys.system.clock(String(toValue(deviceId))),
+    queryFn: () => systemService.clock(String(toValue(deviceId))),
+    enabled: () => Boolean(toValue(deviceId)),
+  })
+}
+
+export function useLicenseQuery(deviceId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: queryKeys.system.license(String(toValue(deviceId))),
+    queryFn: () => systemService.license(String(toValue(deviceId))),
+    enabled: () => Boolean(toValue(deviceId)),
+  })
+}
+
 export function useScriptsQuery(deviceId: MaybeRefOrGetter<string | null>) {
   return useQuery({
     queryKey: queryKeys.system.scripts(String(toValue(deviceId))),

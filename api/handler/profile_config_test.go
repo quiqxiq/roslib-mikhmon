@@ -130,7 +130,9 @@ func setupProfileConfigEngine(t *testing.T) (*gin.Engine, *fakeProfileConfigStor
 	fake := newFakeProfileConfigStore()
 	g := r.Group("/api/v1")
 	devGroup := g.Group("/devices/:device_id")
-	handler.NewProfileConfig(fake).Register(devGroup)
+	// devMgr=nil + goServiceURL="" → handler tetap berfungsi untuk
+	// CRUD murni di DB (auto-inject di-skip karena devMgr nil).
+	handler.NewProfileConfig(fake, nil, "", nil).Register(devGroup)
 	return r, fake
 }
 

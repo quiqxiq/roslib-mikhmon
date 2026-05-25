@@ -5,26 +5,27 @@ export interface SystemIdentity {
 
 export interface SystemResource {
   uptime: string
-  freeMemory: number
-  totalMemory: number
-  cpuLoad: number
-  cpuFrequency?: number
+  free_memory: number
+  total_memory: number
+  cpu_load: number
+  cpu_frequency?: number
   version: string
-  boardName: string
-  architectureName?: string
-  freeHDDSpace?: number
-  totalHDDSpace?: number
+  board_name: string
+  architecture_name?: string
+  free_hdd_space?: number
+  total_hdd_space?: number
   cpu?: string
-  cpuCount?: number
+  cpu_count?: number
 }
 
 export interface Routerboard {
   routerboard: boolean
+  board_name?: string
   model?: string
-  serialNumber?: string
-  firmwareType?: string
-  currentFirmware?: string
-  upgradeFirmware?: string
+  serial_number?: string
+  firmware_type?: string
+  current_firmware?: string
+  upgrade_firmware?: string
 }
 
 export interface SystemClock {
@@ -33,22 +34,28 @@ export interface SystemClock {
   timezone: string
 }
 
+export interface SystemLicense {
+  software_id?: string
+  n_level?: string
+  features?: string
+}
+
 export interface SystemScript {
   id: string
   name: string
   source: string
   policy?: string[]
-  lastStarted?: string
-  runCount?: number
+  last_started?: string
+  run_count?: number
 }
 
 export interface SystemScheduler {
   id: string
   name: string
-  startDate: string
-  startTime: string
+  start_date: string
+  start_time: string
   interval: string
-  onEvent: string
+  on_event: string
   disabled?: boolean
-  runCount?: number
+  run_count?: number
 }

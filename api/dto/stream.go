@@ -170,3 +170,15 @@ type HotspotInactiveEvent struct {
 	User   HotspotUserEvent `json:"user"`
 	Action string           `json:"action"`
 }
+
+// RouterboardEvent adalah typed event untuk SSE /stream/system/routerboard.
+type RouterboardEvent struct {
+	Routerboard     bool   `json:"routerboard"`
+	BoardName       string `json:"board_name,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Revision        string `json:"revision,omitempty"`
+	SerialNumber    string `json:"serial_number,omitempty"`
+	FirmwareType    string `json:"firmware_type,omitempty"`
+	CurrentFirmware string `json:"current_firmware,omitempty"`
+	UpgradeFirmware string `json:"upgrade_firmware,omitempty"`
+}

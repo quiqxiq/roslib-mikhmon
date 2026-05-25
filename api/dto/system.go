@@ -90,6 +90,20 @@ func FromDomainClock(c domain.SystemClock) SystemClockResponse {
 	}
 }
 
+// ── SystemLicense ──────────────────────────────────────────────────────
+
+type SystemLicenseResponse struct {
+	SoftwareID string `json:"software_id,omitempty"`
+	NLevel     string `json:"n_level,omitempty"`
+	Features   string `json:"features,omitempty"`
+}
+
+func FromDomainLicense(l domain.SystemLicense) SystemLicenseResponse {
+	return SystemLicenseResponse{
+		SoftwareID: l.SoftwareID, NLevel: l.NLevel, Features: l.Features,
+	}
+}
+
 // ── Script ─────────────────────────────────────────────────────────────
 
 type ScriptResponse struct {

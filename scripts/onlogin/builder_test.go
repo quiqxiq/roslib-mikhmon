@@ -14,6 +14,7 @@ import (
 var update = flag.Bool("update", false, "regenerate golden files")
 
 func TestBuild_GoldenFiles(t *testing.T) {
+	const webhookURL = "http://192.168.1.10:8080/api/v1/hook/hotspot/login/1"
 	cases := []struct {
 		name string
 		opts Options
@@ -42,6 +43,18 @@ func TestBuild_GoldenFiles(t *testing.T) {
 			name: "mode_remove_lock_only",
 			opts: Options{Mode: domain.ModeRemove, Validity: "1d", Price: 5000, SellPrice: 4500, LockMAC: true},
 		},
+		{
+			name: "mode_remove_with_webhook",
+			opts: Options{Mode: domain.ModeRemove, Validity: "1d", Price: 5000, SellPrice: 4500, WebhookURL: webhookURL, ProfileName: "1day"},
+		},
+		{
+			name: "mode_remove_record_with_webhook",
+			opts: Options{Mode: domain.ModeRemoveRecord, Validity: "1d", Price: 5000, SellPrice: 4500, WebhookURL: webhookURL, ProfileName: "1day"},
+		},
+		{
+			name: "mode_notice_record_lock_with_webhook",
+			opts: Options{Mode: domain.ModeNoticeRecord, Validity: "30d", Price: 25000, SellPrice: 20000, LockMAC: true, WebhookURL: webhookURL, ProfileName: "30day"},
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -59,8 +72,14 @@ func TestBuild_GoldenFiles(t *testing.T) {
 	}
 }
 
-func TestPostProcessNamePlaceholders(t *testing.T) {
-	in := `name=("$date-|-...-|-<PROFILE>-|-") owner=("<MONTHYEAR>")`
-	got := PostProcessNamePlaceholders(in, "1day", "Jan2025")
-	assert.Equal(t, `name=("$date-|-...-|-1day-|-") owner=("Jan2025")`, got)
+// TestBuild_ModeNone_NoWebhook memastikan webhook block TIDAK ditambahkan
+// untuk mode "0" (free profile) walau WebhookURL di-set — karena free
+// profile tidak ada selling record yang perlu di-trigger.
+func TestBuild_ModeNone_NoWebhook(t *testing.T) {
+	got := Build(Options{
+		Mode:       domain.ModeNone,
+		Price:      0,
+		WebhookURL: "http://example.com/hook",
+	})
+	assert.NotContains(t, got, "/tool fetch", "mode=0 should not emit webhook block")
 }

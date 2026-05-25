@@ -34,7 +34,6 @@
             tls_router:
               summary: Router via API-SSL (TLS)
               value:
-                slug: rb-main
                 display_name: "RB Main Office"
                 address: "192.168.88.1:8729"
                 username: admin
@@ -44,7 +43,6 @@
             plain_router:
               summary: Router via API plain
               value:
-                slug: rb-warehouse
                 display_name: "RB Warehouse"
                 address: "192.168.99.1:8728"
                 username: admin
@@ -67,7 +65,6 @@
                   data:
                     device:
                       id: 1
-                      slug: rb-main
                       display_name: "RB Main Office"
                       address: "192.168.88.1:8729"
                       username: admin
@@ -82,7 +79,6 @@
                   data:
                     device:
                       id: 2
-                      slug: rb-warehouse
                       display_name: "RB Warehouse"
                       address: "192.168.99.1:8728"
                       username: admin
@@ -101,7 +97,7 @@
     - $ref: '../components/parameters.yaml#/DeviceIdPath'
   get:
     tags: [Devices]
-    summary: Get device by ID/slug
+    summary: Get device by ID
     responses:
       '200':
         description: Device detail

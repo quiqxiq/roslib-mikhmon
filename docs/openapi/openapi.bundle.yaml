@@ -27,7 +27,7 @@ info:
     | `TIMEOUT` | 504 | `context.DeadlineExceeded` |
     | `CANCELED` | 499 | `context.Canceled` |
     | `INTERNAL` | 500 | uncategorized / panic recovery |
-    | `DEVICE_NOT_FOUND` | 404 | device middleware: slug tidak terhubung |
+    | `DEVICE_NOT_FOUND` | 404 | device middleware: device ID tidak terhubung |
     | `SERVICE_UNAVAILABLE` | 503 | InfluxDB / dependency lain down |
 
     Setiap response menyertakan header `X-Request-ID` (16-char hex) untuk
@@ -79,7 +79,7 @@ security:
 tags:
   - name: Devices
     description: |
-      CRUD device (slug, address, credential). Tidak butuh router fisik
+      CRUD device (address, credential). Tidak butuh router fisik
       nyala — endpoint ini hanya menyentuh database.
   - name: System
     description: |
@@ -130,6 +130,12 @@ tags:
     description: |
       Konfigurasi mikhmon-local per hotspot profile (validity, harga,
       expiry mode, lock MAC). Terpisah dari profile router-side.
+  - name: Webhook
+    description: |
+      Endpoint internal yang dipanggil oleh on-login script MikroTik
+      via `/tool/fetch`. **TIDAK pakai JWT** — router tidak bisa pegang
+      token. **MVP**: tidak ada IP whitelist atau shared secret. Pakai
+      firewall rule supaya hanya reachable dari router.
 paths:
   /healthz:
     get:
@@ -516,7 +522,6 @@ paths:
               tls_router:
                 summary: Router via API-SSL (TLS)
                 value:
-                  slug: rb-main
                   display_name: RB Main Office
                   address: 192.168.88.1:8729
                   username: admin
@@ -526,7 +531,6 @@ paths:
               plain_router:
                 summary: Router via API plain
                 value:
-                  slug: rb-warehouse
                   display_name: RB Warehouse
                   address: 192.168.99.1:8728
                   username: admin
@@ -550,7 +554,6 @@ paths:
                     data:
                       device:
                         id: 1
-                        slug: rb-main
                         display_name: RB Main Office
                         address: 192.168.88.1:8729
                         username: admin
@@ -565,7 +568,6 @@ paths:
                     data:
                       device:
                         id: 2
-                        slug: rb-warehouse
                         display_name: RB Warehouse
                         address: 192.168.99.1:8728
                         username: admin
@@ -586,7 +588,7 @@ paths:
     get:
       tags:
         - Devices
-      summary: Get device by ID/slug
+      summary: Get device by ID
       responses:
         '200':
           description: Device detail
@@ -754,6 +756,30 @@ paths:
           $ref: '#/components/responses/ErrorDeviceNotFound'
         '500':
           $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/system/license:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System
+      summary: Get license info
+      description: Snapshot `/system/license` — software-id, nlevel, features.
+      responses:
+        '200':
+          description: License snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SystemLicenseResponse'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
   /devices/{device_id}/system/reboot:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -812,6 +838,53 @@ paths:
           $ref: '#/components/responses/ErrorDeviceNotFound'
         '500':
           $ref: '#/components/responses/ErrorInternal'
+  /devices/{device_id}/ping:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - System
+      summary: ICMP ping count-based
+      description: |
+        Jalankan `/ping address=<addr> count=<count>` di RouterOS.
+        Blocking — menunggu semua reply selesai lalu return summary.
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: Target IP address (mis. `8.8.8.8`).
+          schema:
+            type: string
+            example: 8.8.8.8
+        - name: count
+          in: query
+          required: false
+          description: Jumlah ping. Default 5, max 50.
+          schema:
+            type: integer
+            default: 5
+            maximum: 50
+            example: 5
+      responses:
+        '200':
+          description: Ping summary
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/PingSummary'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+        '500':
+          $ref: '#/components/responses/ErrorInternal'
+        '504':
+          $ref: '#/components/responses/ErrorTimeout'
   /devices/{device_id}/system/logging/by-prefix/{prefix}:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -1496,6 +1569,47 @@ paths:
           $ref: '#/components/responses/ErrorUnauthorized'
         '429':
           $ref: '#/components/responses/ErrorRateLimit'
+  /devices/{device_id}/hotspot/profile-configs/sync:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - Profile Configs
+      summary: Sync profile router → DB + auto-inject on-login script
+      description: |
+        Tarik semua hotspot profile dari MikroTik router lalu reconcile dengan
+        tabel `hotspot_profile_configs`:
+
+          - Profile router yang **belum ada** di DB → di-insert dengan default
+            `expiry_mode: "0"`, `price: 0`. Operator perlu PUT untuk set price.
+          - Profile yang **sudah ada** di DB → tidak ditimpa (price/mode
+            operator dipertahankan).
+          - Config DB yang profile-nya **hilang** dari router → masuk
+            `orphan` (tidak dihapus otomatis).
+          - Untuk semua profile yang sinkron, on-login script di-push ke
+            router (best-effort; per-profile error masuk `inject_failed`).
+
+        Membutuhkan device online. Return 503 kalau router tidak terhubung.
+      responses:
+        '200':
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProfileConfigSyncResponse'
+        '401':
+          $ref: '#/components/responses/ErrorUnauthorized'
+        '503':
+          description: Device manager not configured atau router offline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /devices/{device_id}/hotspot/profile-configs/{profile_name}:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -1598,6 +1712,118 @@ paths:
           $ref: '#/components/responses/ErrorForbidden'
         '404':
           $ref: '#/components/responses/ErrorNotFound'
+  /hook/hotspot/login/{device_id}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    post:
+      tags:
+        - Webhook
+      summary: Webhook on-login dari MikroTik (catat selling record)
+      security: []
+      description: |
+        **Endpoint internal — dipanggil oleh on-login script MikroTik via
+        `/tool/fetch`.** Tidak butuh JWT (router tidak bisa pegang token).
+
+        **PERINGATAN MVP**: tidak ada IP whitelist atau shared secret.
+        Jangan expose port ke internet publik. Pakai firewall rule supaya
+        hanya reachable dari MikroTik router.
+
+        Flow:
+
+          1. Validasi `device_id` exists di DB.
+          2. Lookup `profile_config (device_id, profile)`.
+          3. Skip kalau mode tidak mencatat transaksi — hanya `remc` dan `ntfc`
+             yang lanjut. Mode `rem`, `ntf`, dan `"0"` (free) menghasilkan
+             `reason: non_recording_mode`.
+          4. Dedup berbasis window validity: skip kalau sudah ada record
+             `(device_id, username, comment="login")` yang dibuat dalam window
+             `validity` terakhir (re-login = koneksi ulang, bukan pembelian baru).
+             Login setelah window habis ter-record sebagai pembelian baru.
+          5. Insert transaction baru dengan price/sell_price/validity dari
+             profile_config.
+
+        Selalu return 200 OK untuk error non-fatal (router tidak punya retry
+        yang bermakna). Body response berisi `recorded` (bool) + `reason`
+        (skip reason kalau ada).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - user
+              properties:
+                user:
+                  type: string
+                  description: Hotspot username (dari `$user`).
+                  example: vc-12345
+                  maxLength: 128
+                mac:
+                  type: string
+                  description: Client MAC address (dari `$"mac-address"`).
+                  example: AA:BB:CC:DD:EE:FF
+                  maxLength: 17
+                ip:
+                  type: string
+                  description: Client IP (dari `$address`).
+                  example: 10.0.0.5
+                  maxLength: 45
+                profile:
+                  type: string
+                  description: |
+                    Profile name (di-embed di script saat generate, tidak
+                    perlu lookup ke router). Kalau kosong → skip recording.
+                  example: 1day
+                  maxLength: 64
+      responses:
+        '200':
+          description: Webhook processed (recorded atau di-skip)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          recorded:
+                            type: boolean
+                            description: True kalau transaction baru di-insert.
+                          reason:
+                            type: string
+                            description: |
+                              Diisi kalau `recorded=false`. Nilai:
+                              `missing_profile`, `profile_not_configured`,
+                              `non_recording_mode`, `already_recorded`.
+                            enum:
+                              - missing_profile
+                              - profile_not_configured
+                              - non_recording_mode
+                              - already_recorded
+                          transaction_id:
+                            type: integer
+                            description: Diisi kalau `recorded=true`.
+        '400':
+          description: Bad request (invalid device id atau missing user)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Device tidak ditemukan di DB
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal error (DB write failed, dst)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /devices/{device_id}/hotspot/profiles:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -2956,6 +3182,60 @@ paths:
                 $ref: '#/components/schemas/InterfaceStatsEvent'
         '404':
           $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/ping:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+    get:
+      tags:
+        - Streaming
+      summary: Stream ICMP ping (SSE inherent)
+      description: |
+        Inherent stream `/ping address=<addr>` tanpa count. Emit tiap reply
+        sebagai event `ping`. Frontend poll via SSE — tidak perlu interval
+        query param. Auto-stop saat last subscriber leave (/cancel ke router).
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: Target IP address.
+          schema:
+            type: string
+            example: 8.8.8.8
+      x-event-types:
+        - ping
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/PingEvent'
+        '400':
+          $ref: '#/components/responses/ErrorValidation'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/system/routerboard:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream routerboard snapshot (SSE polling)
+      description: |
+        Polling `/system/routerboard/print` per `?interval=` (default `2s`).
+        Event `routerboard` dengan payload `RouterboardEvent`.
+      x-event-types:
+        - routerboard
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RouterboardEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
   /devices/{device_id}/stream/network/queues/stats:
     parameters:
       - $ref: '#/components/parameters/DeviceIdPath'
@@ -2969,6 +3249,59 @@ paths:
         Payload diparse ke `QueueStatsEvent` lengkap. Field counter tetap
         memakai format RouterOS `"in/out"` saat RouterOS mengembalikannya
         sebagai pasangan arah.
+      x-event-types:
+        - stats
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/QueueStatsEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/network/queues/stats/{name}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - name: name
+        in: path
+        required: true
+        description: Nama queue (mis. `<hotspot-user01>`).
+        schema:
+          type: string
+          example: <hotspot-user01>
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream queue stats by name (SSE polling)
+      description: |
+        Polling `/queue/simple/print stats ?name=<name>` per `?interval=`
+        (default `1s`). Event `stats` dengan payload `QueueStatsEvent`.
+        Proplist diatur untuk memperkecil payload.
+      x-event-types:
+        - stats
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/QueueStatsEvent'
+        '404':
+          $ref: '#/components/responses/ErrorDeviceNotFound'
+  /devices/{device_id}/stream/network/queues/parents/stats:
+    parameters:
+      - $ref: '#/components/parameters/DeviceIdPath'
+      - $ref: '#/components/parameters/IntervalQuery'
+    get:
+      tags:
+        - Streaming
+      summary: Stream parent queue stats (SSE polling)
+      description: |
+        Polling `/queue/simple/print stats ?dynamic=false` per `?interval=`
+        (default `1s`). Hanya queue user-defined (bukan auto-generated).
+        Event `stats` dengan payload `QueueStatsEvent`.
       x-event-types:
         - stats
       responses:
@@ -3262,7 +3595,7 @@ paths:
                 format: binary
                 example: |
                   sale_date,sale_time,username,profile,price,sell_price,validity,mac,ip,comment
-                  jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,expiry-auto
+                  jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,login
         '404':
           $ref: '#/components/responses/ErrorNotFound'
 components:
@@ -3447,7 +3780,6 @@ components:
         router saat dial.
       required:
         - id
-        - slug
         - display_name
         - address
         - username
@@ -3461,10 +3793,6 @@ components:
           type: integer
           format: int64
           example: 1
-        slug:
-          type: string
-          description: Identifier unik. Dipakai di URL `/devices/{device_id}/...`.
-          example: rb-main
         display_name:
           type: string
           example: RB Main Office
@@ -3506,19 +3834,13 @@ components:
           format: date-time
     DeviceCreateRequest:
       type: object
-      description: Body POST /devices. Slug harus unik.
+      description: Body POST /devices.
       required:
-        - slug
         - display_name
         - address
         - username
         - password
       properties:
-        slug:
-          type: string
-          minLength: 1
-          maxLength: 64
-          example: rb-main
         display_name:
           type: string
           minLength: 1
@@ -3704,6 +4026,19 @@ components:
           type: boolean
         dst_active:
           type: boolean
+    SystemLicenseResponse:
+      type: object
+      description: Snapshot license router dari `/system/license`.
+      properties:
+        software_id:
+          type: string
+          example: ABC1-DEF2-GHI3
+        n_level:
+          type: string
+          example: '4'
+        features:
+          type: string
+          example: wireless,ipv6
     ScriptResponse:
       type: object
       required:
@@ -5337,6 +5672,126 @@ components:
         max_limit:
           type: string
           example: 2M/2M
+    RouterboardEvent:
+      type: object
+      description: Event dari /stream/system/routerboard — board info & firmware.
+      required:
+        - routerboard
+      properties:
+        routerboard:
+          type: boolean
+          example: true
+        board_name:
+          type: string
+          example: RB951G-2HnD
+        model:
+          type: string
+          example: 951G-2HnD
+        revision:
+          type: string
+          example: r2
+        serial_number:
+          type: string
+          example: 1234567890AB
+        firmware_type:
+          type: string
+          example: ar9344
+        current_firmware:
+          type: string
+          example: '7.13'
+        upgrade_firmware:
+          type: string
+          example: '7.13'
+    PingEvent:
+      type: object
+      description: Satu reply ICMP dari /stream/ping.
+      required:
+        - seq
+        - host
+        - size
+        - time_ms
+      properties:
+        seq:
+          type: integer
+          example: 0
+        host:
+          type: string
+          example: 8.8.8.8
+        size:
+          type: integer
+          example: 56
+        ttl:
+          type: integer
+          example: 115
+        time_ms:
+          type: number
+          format: float
+          example: 24
+        status:
+          type: string
+          example: ''
+    PingResult:
+      type: object
+      description: Satu reply ICMP echo dari RouterOS.
+      properties:
+        seq:
+          type: integer
+          description: Sequence number.
+          example: 0
+        host:
+          type: string
+          description: Target host.
+          example: 8.8.8.8
+        size:
+          type: integer
+          description: Packet size.
+          example: 56
+        ttl:
+          type: integer
+          description: TTL.
+          example: 115
+        time_ms:
+          type: number
+          format: float
+          description: Round-trip time dalam milidetik.
+          example: 24
+        status:
+          type: string
+          description: Kosong = success, lainnya = timeout/unreachable.
+          example: ''
+    PingSummary:
+      type: object
+      description: Summary akhir dari command /ping count=N.
+      properties:
+        target:
+          type: string
+          example: 8.8.8.8
+        sent:
+          type: integer
+          example: 5
+        received:
+          type: integer
+          example: 5
+        packet_loss_percent:
+          type: number
+          format: float
+          example: 0
+        min_rtt_ms:
+          type: number
+          format: float
+          example: 23
+        avg_rtt_ms:
+          type: number
+          format: float
+          example: 24
+        max_rtt_ms:
+          type: number
+          format: float
+          example: 25
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PingResult'
     LogEntryResponse:
       type: object
       description: Satu entry log RouterOS dari /log/print (snapshot, bukan stream).
@@ -5381,9 +5836,9 @@ components:
     TransactionResponse:
       type: object
       description: |
-        Satu row transaksi penjualan voucher (dicatat oleh expiry service mode
-        `remc`/`ntfc` saat voucher di-expire). Format `sale_date`/`sale_month`
-        mengikuti konvensi mikhmonv3 (lowercase month).
+        Satu row transaksi penjualan voucher (dicatat oleh webhook on-login
+        handler untuk mode `remc`/`ntfc` saat user pertama login). Format
+        `sale_date`/`sale_month` mengikuti konvensi mikhmonv3 (lowercase month).
       required:
         - id
         - sale_date
@@ -5430,7 +5885,7 @@ components:
           example: default
         comment:
           type: string
-          example: expiry-auto
+          example: login
         created_at:
           type: string
           format: date-time
@@ -5718,15 +6173,74 @@ components:
         lock_mac:
           type: boolean
           default: false
+    ProfileConfigSyncResponse:
+      type: object
+      description: |
+        Ringkasan hasil sync profile router → DB. Tiap kategori berisi
+        profile name (string) yang masuk kategori tsb.
+      required:
+        - synced
+        - created
+        - orphan
+        - injected
+        - inject_failed
+      properties:
+        synced:
+          type: array
+          items:
+            type: string
+          description: |
+            Profile router yang sudah ada di DB → tidak ditimpa (operator value
+            seperti price/mode dipertahankan).
+          example:
+            - default
+            - 30day
+        created:
+          type: array
+          items:
+            type: string
+          description: |
+            Profile router baru yang di-insert ke DB dengan default
+            `expiry_mode: "0"`, `price: 0`, `validity: ""`. Operator perlu PUT
+            untuk set price/mode agar selling record aktif.
+          example:
+            - new-promo
+        orphan:
+          type: array
+          items:
+            type: string
+          description: |
+            Config DB yang profile-nya sudah hilang dari router (mungkin
+            di-delete via WinBox/CLI). Tidak dihapus otomatis dari DB.
+          example:
+            - legacy-profile
+        injected:
+          type: array
+          items:
+            type: string
+          description: |
+            Profile yang on-login script-nya berhasil di-push ke router.
+          example:
+            - default
+            - 30day
+        inject_failed:
+          type: array
+          items:
+            type: string
+          description: |
+            Profile yang gagal di-inject. Format: `<profile>: <error>`. Tidak
+            fatal — sync tetap completed dan profile lain tetap di-process.
+          example: []
   parameters:
     DeviceIdPath:
       name: device_id
       in: path
       required: true
-      description: Identifier device. Boleh numeric ID atau slug device (mis. `rb-main`).
+      description: Numeric device ID.
       schema:
-        type: string
-        example: rb-main
+        type: integer
+        format: int64
+        example: 1
     IdPath:
       name: id
       in: path

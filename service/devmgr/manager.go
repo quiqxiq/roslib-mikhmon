@@ -45,20 +45,20 @@ type Manager struct {
 	store  store.DeviceStore
 	log    *logrus.Logger
 	mu     sync.RWMutex
-	active map[string]*ClientSet // key = device slug
-	ctx    context.Context       // root context, hidup sepanjang server
+	active map[uint]*ClientSet // key = device ID
+	ctx    context.Context     // root context, hidup sepanjang server
 
 	// Hook callbacks — dipanggil setelah koneksi berhasil / device dihapus.
 	// Set sebelum memanggil Start(). Thread-safe: hanya dibaca setelah Set.
 	OnDeviceConnected func(d model.MikrotikDevice)
-	OnDeviceRemoved   func(slug string)
+	OnDeviceRemoved   func(deviceID uint)
 }
 
 func New(ds store.DeviceStore, log *logrus.Logger) *Manager {
 	return &Manager{
 		store:  ds,
 		log:    log,
-		active: make(map[string]*ClientSet),
+		active: make(map[uint]*ClientSet),
 	}
 }
 
@@ -72,17 +72,17 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	for _, d := range devices {
 		if err := m.connect(d); err != nil {
-			m.log.WithError(err).Warnf("devmgr: failed to connect %s", d.Slug)
+			m.log.WithError(err).Warnf("devmgr: failed to connect %s", d.DisplayName)
 		}
 	}
 	return nil
 }
 
-// Get mengembalikan ClientSet by slug. Mengembalikan ErrDeviceNotConnected
+// Get mengembalikan ClientSet by device ID. Mengembalikan ErrDeviceNotConnected
 // (sentinel) kalau tidak ditemukan — caller dapat detect via errors.Is.
-func (m *Manager) Get(slug string) (*ClientSet, error) {
+func (m *Manager) Get(deviceID uint) (*ClientSet, error) {
 	m.mu.RLock()
-	cs, ok := m.active[slug]
+	cs, ok := m.active[deviceID]
 	m.mu.RUnlock()
 	if !ok {
 		return nil, ErrDeviceNotConnected
@@ -90,24 +90,24 @@ func (m *Manager) Get(slug string) (*ClientSet, error) {
 	return cs, nil
 }
 
-// RegisterForTest mendaftarkan ClientSet untuk slug langsung tanpa melalui
+// RegisterForTest mendaftarkan ClientSet untuk device ID langsung tanpa melalui
 // connect(). Hanya dipakai oleh testutil untuk wiring mock device tanpa
 // touch router fisik. Tidak ada validasi — caller bertanggung jawab atas
 // state ClientSet.
-func (m *Manager) RegisterForTest(slug string, cs *ClientSet) {
+func (m *Manager) RegisterForTest(deviceID uint, cs *ClientSet) {
 	m.mu.Lock()
 	if m.active == nil {
-		m.active = make(map[string]*ClientSet)
+		m.active = make(map[uint]*ClientSet)
 	}
-	m.active[slug] = cs
+	m.active[deviceID] = cs
 	m.mu.Unlock()
 }
 
-// ListActive mengembalikan snapshot slug→ClientSet untuk semua device yang sedang terhubung.
-func (m *Manager) ListActive() map[string]*ClientSet {
+// ListActive mengembalikan snapshot ID→ClientSet untuk semua device yang sedang terhubung.
+func (m *Manager) ListActive() map[uint]*ClientSet {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	out := make(map[string]*ClientSet, len(m.active))
+	out := make(map[uint]*ClientSet, len(m.active))
 	for k, v := range m.active {
 		out[k] = v
 	}
@@ -123,25 +123,25 @@ func (m *Manager) Add(_ context.Context, d model.MikrotikDevice) error {
 
 // Remove mendiskoneksi device dan menghapusnya dari map.
 // Async — supervisor goroutine roslib mungkin masih running sesaat
-// setelah return; pakai RemoveAndWait kalau caller perlu re-dial slug
+// setelah return; pakai RemoveAndWait kalau caller perlu re-dial ID
 // yang sama segera setelah ini.
-func (m *Manager) Remove(slug string) {
-	m.removeInternal(slug, false)
+func (m *Manager) Remove(deviceID uint) {
+	m.removeInternal(deviceID, false)
 }
 
 // RemoveAndWait mendiskoneksi device dan menunggu supervisor goroutine
 // roslib benar-benar berhenti (lihat roslib.Device.CloseAndWait) sebelum
-// return. Dipakai oleh Devices.Update agar re-dial slug yang sama tidak
+// return. Dipakai oleh Devices.Update agar re-dial ID yang sama tidak
 // race dengan supervisor lama yang masih emit OnStatusChange.
-func (m *Manager) RemoveAndWait(slug string) {
-	m.removeInternal(slug, true)
+func (m *Manager) RemoveAndWait(deviceID uint) {
+	m.removeInternal(deviceID, true)
 }
 
-func (m *Manager) removeInternal(slug string, wait bool) {
+func (m *Manager) removeInternal(deviceID uint, wait bool) {
 	m.mu.Lock()
-	cs, ok := m.active[slug]
+	cs, ok := m.active[deviceID]
 	if ok {
-		delete(m.active, slug)
+		delete(m.active, deviceID)
 	}
 	m.mu.Unlock()
 
@@ -149,7 +149,7 @@ func (m *Manager) removeInternal(slug string, wait bool) {
 		return
 	}
 	if m.OnDeviceRemoved != nil {
-		m.OnDeviceRemoved(slug)
+		m.OnDeviceRemoved(deviceID)
 	}
 	if wait {
 		cs.Dev.CloseAndWait()
@@ -195,11 +195,24 @@ func (m *Manager) connect(d model.MikrotikDevice) error {
 	cs.WF = workflows.New(dev)
 
 	m.mu.Lock()
-	m.active[d.Slug] = cs
+	m.active[d.ID] = cs
 	m.mu.Unlock()
 
 	now := time.Now()
 	m.persistStatus(d.ID, "connected", "", &now)
+
+	// Best-effort: fetch timezone dari router dan persist ke DB.
+	// Kalau gagal, TimeZone tetap "" → expiry service fallback ke UTC.
+	tzCtx, tzCancel := context.WithTimeout(m.ctx, 10*time.Second)
+	defer tzCancel()
+	if clk, err := cs.Sys.Clock(tzCtx); err == nil && clk.TimeZoneName != "" {
+		d.TimeZone = clk.TimeZoneName
+		if perr := m.store.UpdateTimezone(m.ctx, d.ID, clk.TimeZoneName); perr != nil {
+			m.log.WithError(perr).Warn("devmgr: persist timezone failed")
+		} else {
+			m.log.WithField("tz", clk.TimeZoneName).Infof("devmgr: timezone updated for %s", d.DisplayName)
+		}
+	}
 
 	if m.OnDeviceConnected != nil {
 		m.OnDeviceConnected(d)
@@ -222,7 +235,7 @@ func (m *Manager) makeStatusHook(d model.MikrotikDevice) func(string, string) {
 		"error":     "error",
 		"closed":    "disconnected",
 	}
-	log := m.log.WithField("device", d.Slug)
+	log := m.log.WithField("device", d.DisplayName)
 	return func(status, errMsg string) {
 		s, ok := dbStatus[status]
 		if !ok {

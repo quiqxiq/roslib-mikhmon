@@ -54,6 +54,14 @@ SystemClockResponse:
     time_zone_autodetect: { type: boolean }
     dst_active:           { type: boolean }
 
+SystemLicenseResponse:
+  type: object
+  description: Snapshot license router dari `/system/license`.
+  properties:
+    software_id: { type: string, example: "ABC1-DEF2-GHI3" }
+    n_level:     { type: string, example: "4" }
+    features:    { type: string, example: "wireless,ipv6" }
+
 ScriptResponse:
   type: object
   required: [id, name, run_count, dont_require_permissions]

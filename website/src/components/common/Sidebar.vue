@@ -37,8 +37,8 @@ function isActive(to: string) {
 
 async function onLogout() {
   try {
-    if (authStore.refreshToken) {
-      await authService.logout(authStore.refreshToken)
+    if (authStore.refresh_token) {
+      await authService.logout(authStore.refresh_token)
     }
   } catch (err) {
     console.error('Logout failed:', err)

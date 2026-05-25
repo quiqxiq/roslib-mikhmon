@@ -14,6 +14,7 @@ import { useActiveDevice } from '@/composables/useActiveDevice'
 import {
   useIdentityQuery,
   useResourceQuery,
+  useLicenseQuery,
   useScriptsQuery,
   useSchedulersQuery,
 } from '@/queries/system.queries'
@@ -21,7 +22,8 @@ import { systemService } from '@/services/system'
 import { buildStreamUrl } from '@/services/stream'
 import { useSSE } from '@/composables/useSSE'
 import { useToast } from '@/composables/useToast'
-import type { SystemScript, SystemScheduler } from '@/types/system'
+import type { SystemScript, SystemScheduler, SystemResource, Routerboard } from '@/types/system'
+import type { LogStreamEvent } from '@/types/stream'
 
 const toast = useToast()
 const { activeDeviceId } = useActiveDevice()
@@ -32,6 +34,7 @@ const tab = ref<TabId>('overview')
 // Queries
 const { data: apiIdentity } = useIdentityQuery(activeDeviceId)
 const { data: apiResource, isLoading: loadingResource, refetch: refetchResource } = useResourceQuery(activeDeviceId)
+const { data: apiLicense } = useLicenseQuery(activeDeviceId)
 const { data: apiScripts, refetch: refetchScripts } = useScriptsQuery(activeDeviceId)
 const { data: apiSchedulers, refetch: refetchSchedulers } = useSchedulersQuery(activeDeviceId)
 
@@ -47,18 +50,28 @@ const tabs = computed(() => [
   { id: 'logs' as const, label: 'Logs', icon: 'Activity' as const, live: true },
 ])
 
-// Real-time Resources from SSE
+// Real-time Resources from SSE (event: resource)
 const sseResourceUrl = computed(() => activeDeviceId.value ? buildStreamUrl(activeDeviceId.value, 'system/resource') : null)
-const { parsed: sseResource } = useSSE<any>(sseResourceUrl)
+const { parsed: sseResource } = useSSE<SystemResource>(sseResourceUrl, ['resource'])
 
-const cpu = computed(() => sseResource.value?.cpuLoad ?? apiResource.value?.cpuLoad ?? 0)
-const freeRamBytes = computed(() => sseResource.value?.freeMemory ?? apiResource.value?.freeMemory ?? 0)
-const totalRamBytes = computed(() => sseResource.value?.totalMemory ?? apiResource.value?.totalMemory ?? 1)
+const cpu = computed(() => sseResource.value?.cpu_load ?? apiResource.value?.cpu_load ?? 0)
+const freeRamBytes = computed(() => sseResource.value?.free_memory ?? apiResource.value?.free_memory ?? 0)
+const totalRamBytes = computed(() => sseResource.value?.total_memory ?? apiResource.value?.total_memory ?? 1)
 const ramPct = computed(() => Math.round(((totalRamBytes.value - freeRamBytes.value) / totalRamBytes.value) * 100))
 
-const freeDiskBytes = computed(() => sseResource.value?.freeHDDSpace ?? apiResource.value?.freeHDDSpace ?? 0)
-const totalDiskBytes = computed(() => sseResource.value?.totalHDDSpace ?? apiResource.value?.totalHDDSpace ?? 1)
+const freeDiskBytes = computed(() => sseResource.value?.free_hdd_space ?? apiResource.value?.free_hdd_space ?? 0)
+const totalDiskBytes = computed(() => sseResource.value?.total_hdd_space ?? apiResource.value?.total_hdd_space ?? 1)
 const diskPct = computed(() => Math.round(((totalDiskBytes.value - freeDiskBytes.value) / totalDiskBytes.value) * 100))
+
+// Real-time Routerboard from SSE (event: routerboard)
+const sseRouterboardUrl = computed(() => activeDeviceId.value ? buildStreamUrl(activeDeviceId.value, 'system/routerboard') : null)
+const { parsed: sseRouterboard } = useSSE<Routerboard>(sseRouterboardUrl, ['routerboard'])
+
+const rbBoardName = computed(() => sseRouterboard.value?.board_name ?? '')
+const rbModel = computed(() => sseRouterboard.value?.model ?? '')
+const rbSerial = computed(() => sseRouterboard.value?.serial_number ?? '')
+const rbFirmwareType = computed(() => sseRouterboard.value?.firmware_type ?? '')
+const rbCurrentFirmware = computed(() => sseRouterboard.value?.current_firmware ?? '')
 
 const scriptCols = computed<ColumnDef<SystemScript>[]>(() => [
   {
@@ -89,19 +102,19 @@ const scriptCols = computed<ColumnDef<SystemScript>[]>(() => [
     meta: { mobileHidden: true },
   },
   {
-    accessorKey: 'lastStarted',
+    accessorKey: 'last_started',
     header: 'Last Run',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]', style: 'color: var(--muted)' }, row.original.lastStarted || '—'),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]', style: 'color: var(--muted)' }, row.original.last_started || '—'),
     meta: { mobileHidden: true },
   },
   {
-    accessorKey: 'runCount',
+    accessorKey: 'run_count',
     header: 'Runs',
     cell: ({ row }) =>
       h(
         'span',
         { class: 'mono tabular text-[12px]' },
-        (row.original.runCount ?? 0).toLocaleString('id-ID'),
+        (row.original.run_count ?? 0).toLocaleString('id-ID'),
       ),
   },
 ])
@@ -116,7 +129,7 @@ const schedCols = computed<ColumnDef<SystemScheduler>[]>(() => [
         h(
           'div',
           { class: 'mono text-[11px]', style: 'color: var(--muted)' },
-          `${row.original.startDate || ''} ${row.original.startTime || ''}`,
+          `${row.original.start_date || ''} ${row.original.start_time || ''}`,
         ),
       ]),
   },
@@ -126,16 +139,16 @@ const schedCols = computed<ColumnDef<SystemScheduler>[]>(() => [
     cell: ({ row }) => h(Badge, { tone: 'violet' }, () => `every ${row.original.interval}`),
   },
   {
-    accessorKey: 'onEvent',
+    accessorKey: 'on_event',
     header: 'On Event',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.onEvent || '—'),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.on_event || '—'),
     meta: { mobileHidden: true },
   },
   {
-    accessorKey: 'runCount',
+    accessorKey: 'run_count',
     header: 'Runs',
     cell: ({ row }) =>
-      h('span', { class: 'mono tabular' }, (row.original.runCount ?? 0).toLocaleString('id-ID')),
+      h('span', { class: 'mono tabular' }, (row.original.run_count ?? 0).toLocaleString('id-ID')),
     meta: { mobileHidden: true },
   },
   {
@@ -148,11 +161,11 @@ const schedCols = computed<ColumnDef<SystemScheduler>[]>(() => [
   },
 ])
 
-// Real-time Logs via SSE
+// Real-time Logs via SSE (event: log)
 const paused = ref(false)
-const liveLogs = ref<any[]>([])
+const liveLogs = ref<LogStreamEvent[]>([])
 const sseLogsUrl = computed(() => activeDeviceId.value ? buildStreamUrl(activeDeviceId.value, 'log') : null)
-const { parsed: latestLog } = useSSE<any>(sseLogsUrl)
+const { parsed: latestLog } = useSSE<LogStreamEvent>(sseLogsUrl, ['log'])
 
 watch(latestLog, (log) => {
   if (log && !paused.value) {
@@ -173,8 +186,8 @@ async function reboot() {
   try {
     await systemService.reboot(activeDeviceId.value)
     toast.success('Router sedang reboot…')
-  } catch (err: any) {
-    toast.error(`Gagal me-reboot: ${err.message || err}`)
+  } catch (err) {
+    toast.error(`Gagal me-reboot: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
@@ -184,8 +197,8 @@ async function shutdown() {
   try {
     await systemService.shutdown(activeDeviceId.value)
     toast.warning('Router sedang shutdown…')
-  } catch (err: any) {
-    toast.error(`Gagal mematikan router: ${err.message || err}`)
+  } catch (err) {
+    toast.error(`Gagal mematikan router: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
@@ -236,32 +249,66 @@ function reload() {
                 <Icon name="Server" :size="22" />
               </div>
               <div>
-                <div class="text-base font-semibold">{{ apiResource?.boardName || 'Mikrotik Board' }}</div>
+                <div class="text-base font-semibold">{{ apiResource?.board_name || rbBoardName || 'Mikrotik Board' }}</div>
                 <div class="text-xs" style="color: var(--muted)">
-                  {{ apiResource?.version || 'RouterOS' }} · {{ apiResource?.architectureName || 'unknown' }}
+                  {{ apiResource?.version || 'RouterOS' }} · {{ apiResource?.architecture_name || 'unknown' }}
                 </div>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
               <div>
                 <div style="color: var(--muted)">Board</div>
-                <div class="mono mt-0.5 font-medium">{{ apiResource?.boardName || '—' }}</div>
+                <div class="mono mt-0.5 font-medium">{{ apiResource?.board_name || rbBoardName || '—' }}</div>
               </div>
               <div>
                 <div style="color: var(--muted)">Architecture</div>
-                <div class="mono mt-0.5 font-medium">{{ apiResource?.architectureName || '—' }}</div>
+                <div class="mono mt-0.5 font-medium">{{ apiResource?.architecture_name || '—' }}</div>
               </div>
               <div>
                 <div style="color: var(--muted)">CPU</div>
-                <div class="mono mt-0.5 font-medium">{{ apiResource?.cpu || '—' }} @ {{ apiResource?.cpuFrequency || 0 }} MHz</div>
+                <div class="mono mt-0.5 font-medium">{{ apiResource?.cpu || '—' }} @ {{ apiResource?.cpu_frequency || 0 }} MHz</div>
               </div>
               <div>
                 <div style="color: var(--muted)">CPU Count</div>
-                <div class="mono mt-0.5 font-medium">{{ apiResource?.cpuCount || 1 }} core(s)</div>
+                <div class="mono mt-0.5 font-medium">{{ apiResource?.cpu_count || 1 }} core(s)</div>
               </div>
               <div>
                 <div style="color: var(--muted)">Uptime</div>
                 <div class="mono mt-0.5 font-medium">{{ apiResource?.uptime || '—' }}</div>
+              </div>
+              <div>
+                <div style="color: var(--muted)">Model</div>
+                <div class="mono mt-0.5 font-medium">{{ rbModel || '—' }}</div>
+              </div>
+              <div>
+                <div style="color: var(--muted)">Serial</div>
+                <div class="mono mt-0.5 font-medium">{{ rbSerial || '—' }}</div>
+              </div>
+              <div>
+                <div style="color: var(--muted)">Firmware</div>
+                <div class="mono mt-0.5 font-medium">{{ rbCurrentFirmware || '—' }}</div>
+              </div>
+              <div>
+                <div style="color: var(--muted)">FW Type</div>
+                <div class="mono mt-0.5 font-medium">{{ rbFirmwareType || '—' }}</div>
+              </div>
+            </div>
+            <!-- License info -->
+            <div v-if="apiLicense?.software_id" class="mt-3 rounded-lg p-2.5" style="background: var(--bg-2)">
+              <div class="text-[11px] font-medium uppercase" style="color: var(--muted); letter-spacing: 0.05em">License</div>
+              <div class="mt-1 grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <div style="color: var(--muted)">Software ID</div>
+                  <div class="mono mt-0.5 font-medium">{{ apiLicense.software_id }}</div>
+                </div>
+                <div>
+                  <div style="color: var(--muted)">N-Level</div>
+                  <div class="mono mt-0.5 font-medium">{{ apiLicense.n_level || '—' }}</div>
+                </div>
+                <div>
+                  <div style="color: var(--muted)">Features</div>
+                  <div class="mono mt-0.5 font-medium">{{ apiLicense.features || '—' }}</div>
+                </div>
               </div>
             </div>
           </Card>

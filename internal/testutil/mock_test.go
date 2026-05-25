@@ -54,13 +54,13 @@ func TestNewMockDevice_fifoScript_returnsRow(t *testing.T) {
 
 func TestNewTestDevMgr_getReturnsClientSet(t *testing.T) {
 	mgr, _, dev := NewTestDevMgr(t)
-	cs, err := mgr.Get(dev.Slug)
+	cs, err := mgr.Get(dev.ID)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 	assert.Equal(t, uint(1), cs.DeviceID)
 }
 
-// Repro: same setup as expiry tests — UserList via mgr.Get(slug).
+// Repro: same setup as expiry tests — UserList via mgr.Get(deviceID).
 func TestNewTestDevMgr_userListViaMgr(t *testing.T) {
 	mgr, srv, dev := NewTestDevMgr(t)
 	srv.Script(
@@ -68,7 +68,7 @@ func TestNewTestDevMgr_userListViaMgr(t *testing.T) {
 		tcpmock.DoneReply(),
 	)
 
-	cs, err := mgr.Get(dev.Slug)
+	cs, err := mgr.Get(dev.ID)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

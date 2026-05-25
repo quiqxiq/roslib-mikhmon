@@ -8,9 +8,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func TestGet_returnsSentinelWhenSlugMissing(t *testing.T) {
+func TestGet_returnsSentinelWhenIDMissing(t *testing.T) {
 	m := New(nil, logrus.New())
-	_, err := m.Get("unknown-slug")
+	_, err := m.Get(999)
 	if !errors.Is(err, ErrDeviceNotConnected) {
 		t.Fatalf("Get(missing) err = %v, want ErrDeviceNotConnected", err)
 	}
@@ -27,13 +27,13 @@ func TestListActive_returnsCopy(t *testing.T) {
 	// Pastikan ListActive return snapshot copy, bukan reference ke internal map.
 	// Mutasi pada return value tidak boleh mengubah state internal manager.
 	m := New(nil, logrus.New())
-	m.active["fake"] = &ClientSet{DeviceID: 1}
+	m.active[1] = &ClientSet{DeviceID: 1}
 	got := m.ListActive()
 	if len(got) != 1 {
 		t.Fatalf("ListActive() len = %d, want 1", len(got))
 	}
-	delete(got, "fake")
-	if _, ok := m.active["fake"]; !ok {
+	delete(got, 1)
+	if _, ok := m.active[1]; !ok {
 		t.Errorf("ListActive() returned reference, not copy")
 	}
 }
@@ -88,13 +88,13 @@ func TestBuildTLSConfig_insecureSkipVerify_optIn(t *testing.T) {
 	}
 }
 
-func TestRemove_noopWhenSlugMissing(t *testing.T) {
-	// Remove ke slug yang tidak ada harus aman (no panic, no callback fired).
+func TestRemove_noopWhenIDMissing(t *testing.T) {
+	// Remove ke ID yang tidak ada harus aman (no panic, no callback fired).
 	called := false
 	m := New(nil, logrus.New())
-	m.OnDeviceRemoved = func(string) { called = true }
-	m.Remove("nonexistent")
+	m.OnDeviceRemoved = func(uint) { called = true }
+	m.Remove(999)
 	if called {
-		t.Error("OnDeviceRemoved should not fire for missing slug")
+		t.Error("OnDeviceRemoved should not fire for missing device ID")
 	}
 }

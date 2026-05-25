@@ -22,6 +22,45 @@
       '401': { $ref: '../components/responses.yaml#/ErrorUnauthorized' }
       '429': { $ref: '../components/responses.yaml#/ErrorRateLimit' }
 
+/devices/{device_id}/hotspot/profile-configs/sync:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [Profile Configs]
+    summary: Sync profile router → DB + auto-inject on-login script
+    description: |
+      Tarik semua hotspot profile dari MikroTik router lalu reconcile dengan
+      tabel `hotspot_profile_configs`:
+
+        - Profile router yang **belum ada** di DB → di-insert dengan default
+          `expiry_mode: "0"`, `price: 0`. Operator perlu PUT untuk set price.
+        - Profile yang **sudah ada** di DB → tidak ditimpa (price/mode
+          operator dipertahankan).
+        - Config DB yang profile-nya **hilang** dari router → masuk
+          `orphan` (tidak dihapus otomatis).
+        - Untuk semua profile yang sinkron, on-login script di-push ke
+          router (best-effort; per-profile error masuk `inject_failed`).
+
+      Membutuhkan device online. Return 503 kalau router tidak terhubung.
+    responses:
+      '200':
+        description: Sync result
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/profile-config.yaml#/ProfileConfigSyncResponse' }
+      '401': { $ref: '../components/responses.yaml#/ErrorUnauthorized' }
+      '503':
+        description: Device manager not configured atau router offline
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+
 /devices/{device_id}/hotspot/profile-configs/{profile_name}:
   parameters:
     - $ref: '../components/parameters.yaml#/DeviceIdPath'

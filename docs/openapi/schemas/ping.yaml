@@ -1,0 +1,62 @@
+PingResult:
+  type: object
+  description: Satu reply ICMP echo dari RouterOS.
+  properties:
+    seq:
+      type: integer
+      description: Sequence number.
+      example: 0
+    host:
+      type: string
+      description: Target host.
+      example: "8.8.8.8"
+    size:
+      type: integer
+      description: Packet size.
+      example: 56
+    ttl:
+      type: integer
+      description: TTL.
+      example: 115
+    time_ms:
+      type: number
+      format: float
+      description: Round-trip time dalam milidetik.
+      example: 24
+    status:
+      type: string
+      description: Kosong = success, lainnya = timeout/unreachable.
+      example: ""
+
+PingSummary:
+  type: object
+  description: Summary akhir dari command /ping count=N.
+  properties:
+    target:
+      type: string
+      example: "8.8.8.8"
+    sent:
+      type: integer
+      example: 5
+    received:
+      type: integer
+      example: 5
+    packet_loss_percent:
+      type: number
+      format: float
+      example: 0
+    min_rtt_ms:
+      type: number
+      format: float
+      example: 23
+    avg_rtt_ms:
+      type: number
+      format: float
+      example: 24
+    max_rtt_ms:
+      type: number
+      format: float
+      example: 25
+    results:
+      type: array
+      items: { $ref: '#/PingResult' }

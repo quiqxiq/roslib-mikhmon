@@ -43,4 +43,11 @@ type Deps struct {
 
 	// InfluxReader untuk history query API. Nil jika INFLUX_ENABLED=false.
 	InfluxReader *roslibinflux.Reader
+
+	// GoServiceURL adalah URL absolut Go service yang reachable dari
+	// MikroTik router (mis. "http://192.168.1.10:8080"). Digunakan oleh
+	// handler ProfileConfig untuk membentuk webhook URL di on-login
+	// script. Boleh kosong → webhook block di-skip (selling record
+	// di-bypass). Sumber: env GO_SERVICE_URL.
+	GoServiceURL string
 }

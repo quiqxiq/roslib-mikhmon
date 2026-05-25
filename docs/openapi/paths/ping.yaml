@@ -1,0 +1,41 @@
+/devices/{device_id}/ping:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  get:
+    tags: [System]
+    summary: ICMP ping count-based
+    description: |
+      Jalankan `/ping address=<addr> count=<count>` di RouterOS.
+      Blocking — menunggu semua reply selesai lalu return summary.
+    parameters:
+      - name: address
+        in: query
+        required: true
+        description: Target IP address (mis. `8.8.8.8`).
+        schema:
+          type: string
+          example: "8.8.8.8"
+      - name: count
+        in: query
+        required: false
+        description: Jumlah ping. Default 5, max 50.
+        schema:
+          type: integer
+          default: 5
+          maximum: 50
+          example: 5
+    responses:
+      '200':
+        description: Ping summary
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data: { $ref: '../schemas/ping.yaml#/PingSummary' }
+      '400': { $ref: '../components/responses.yaml#/ErrorValidation' }
+      '404': { $ref: '../components/responses.yaml#/ErrorDeviceNotFound' }
+      '504': { $ref: '../components/responses.yaml#/ErrorTimeout' }
+      '500': { $ref: '../components/responses.yaml#/ErrorInternal' }

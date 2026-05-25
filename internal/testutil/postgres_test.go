@@ -17,7 +17,6 @@ func TestNewPostgres_migrateAndInsert(t *testing.T) {
 
 	ctx := context.Background()
 	d := &model.MikrotikDevice{
-		Slug:        "smoke-postgres",
 		DisplayName: "smoke",
 		Address:     "127.0.0.1:8728",
 		Username:    "u",

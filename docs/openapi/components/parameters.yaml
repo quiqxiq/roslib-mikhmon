@@ -6,10 +6,11 @@ DeviceIdPath:
   name: device_id
   in: path
   required: true
-  description: Identifier device. Boleh numeric ID atau slug device (mis. `rb-main`).
+  description: Numeric device ID.
   schema:
-    type: string
-    example: "rb-main"
+    type: integer
+    format: int64
+    example: 1
 
 IdPath:
   name: id

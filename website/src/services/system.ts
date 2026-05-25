@@ -1,6 +1,6 @@
 import { http } from '@/plugins/axios'
 import type { ApiEnvelope } from '@/types/api'
-import type { Routerboard, SystemClock, SystemIdentity, SystemResource } from '@/types/system'
+import type { Routerboard, SystemClock, SystemIdentity, SystemLicense, SystemResource } from '@/types/system'
 
 const base = (deviceId: string) => `/devices/${deviceId}/system`
 
@@ -19,6 +19,10 @@ export const systemService = {
   },
   async clock(deviceId: string): Promise<SystemClock> {
     const { data } = await http.get<ApiEnvelope<SystemClock>>(`${base(deviceId)}/clock`)
+    return data.data
+  },
+  async license(deviceId: string): Promise<SystemLicense> {
+    const { data } = await http.get<ApiEnvelope<SystemLicense>>(`${base(deviceId)}/license`)
     return data.data
   },
   async reboot(deviceId: string): Promise<void> {

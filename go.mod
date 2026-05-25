@@ -120,3 +120,5 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/go-routeros/routeros/v3 => github.com/quiqxiq/goros/v3 v3.0.0-20260524023602-b94492ea4313

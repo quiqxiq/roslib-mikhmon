@@ -1,6 +1,8 @@
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 import { API_BASE_URL } from '@/utils/env'
 import { useAuthStore } from '@/stores/auth'
+import type { ApiEnvelope } from '@/types/api'
+import type { TokenPair } from '@/types/auth'
 
 export const http: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -10,8 +12,8 @@ export const http: AxiosInstance = axios.create({
 
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const auth = useAuthStore()
-  if (auth.accessToken) {
-    config.headers.set('Authorization', `Bearer ${auth.accessToken}`)
+  if (auth.access_token) {
+    config.headers.set('Authorization', `Bearer ${auth.access_token}`)
   }
   return config
 })
@@ -20,20 +22,15 @@ let refreshInFlight: Promise<string | null> | null = null
 
 async function refreshAccessToken(): Promise<string | null> {
   const auth = useAuthStore()
-  if (!auth.refreshToken) return null
+  if (!auth.refresh_token) return null
   try {
-    const res = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-      refresh_token: auth.refreshToken,
+    const res = await axios.post<ApiEnvelope<TokenPair>>(`${API_BASE_URL}/auth/refresh`, {
+      refresh_token: auth.refresh_token,
     })
-    const raw = res.data?.data
-    if (raw?.access_token) {
-      const mappedTokens = {
-        accessToken: raw.access_token,
-        refreshToken: raw.refresh_token,
-        expiresIn: raw.expires_in,
-      }
-      auth.setTokens(mappedTokens)
-      return mappedTokens.accessToken
+    const tokens = res.data?.data
+    if (tokens?.access_token) {
+      auth.setTokens(tokens)
+      return tokens.access_token
     }
   } catch {
     auth.reset()

@@ -12,6 +12,8 @@ import (
 //
 // Auth:
 //   - /auth/login, /auth/refresh, /auth/logout — public (tidak butuh token).
+//   - /hook/hotspot/login/:device_id — public webhook (router on-login script).
+//     MVP: tanpa auth, tanpa rate limit. JANGAN expose ke internet publik.
 //   - Semua endpoint lain butuh Bearer access token (RequireAuth).
 //   - Role enforcement: admin > operator > viewer.
 //   - admin: full access termasuk /auth/users CRUD + DELETE devices + reboot/shutdown.
@@ -20,6 +22,17 @@ import (
 //
 // Kalau deps.AuthSigner nil → enforcement di-skip (test mode / standalone).
 func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
+	// ── Public webhook (router on-login) ──────────────────────────────────
+	// PENTING: register SEBELUM auth chain di-pasang. Endpoint ini tidak
+	// butuh JWT karena dipanggil oleh /tool/fetch dari MikroTik router.
+	// MVP: tidak ada IP whitelist / shared secret — wajib di-add sebelum
+	// deploy ke production.
+	if deps.TxStore != nil && deps.ProfileStore != nil && deps.DeviceStore != nil {
+		hookGroup := g.Group("")
+		handler.NewHookLogin(deps.DeviceStore, deps.TxStore, deps.ProfileStore, deps.Logger).
+			Register(hookGroup)
+	}
+
 	// ── Auth public endpoints (login/refresh/logout) ──────────────────────
 	// Pasang IP rate limit (anon) di scope public auth.
 	if deps.AuthService != nil {
@@ -86,6 +99,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
 	handler.NewSystemScript(nil).Register(dev)
 	handler.NewSystemScheduler(nil).Register(dev)
 	handler.NewLog(nil).Register(dev)
+	handler.NewPingCount(nil).Register(dev)
 
 	// System control (reboot/shutdown) — hanya admin
 	sysControlGroup := dev.Group("")
@@ -139,7 +153,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps *Deps) {
 		for _, mw := range authChain {
 			configScope.Use(mw)
 		}
-		handler.NewProfileConfig(deps.ProfileStore).Register(configScope)
+		handler.NewProfileConfig(deps.ProfileStore, deps.DevMgr, deps.GoServiceURL, deps.Logger).Register(configScope)
 	}
 }
 

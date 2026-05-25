@@ -4,16 +4,12 @@ DeviceResponse:
     Representasi device (RouterOS instance) yang ter-register di service.
     Password sengaja TIDAK di-expose; hanya disimpan di DB dan dikirim ke
     router saat dial.
-  required: [id, slug, display_name, address, username, use_tls, status, expiry_check_interval, active, created_at]
+  required: [id, display_name, address, username, use_tls, status, expiry_check_interval, active, created_at]
   properties:
     id:
       type: integer
       format: int64
       example: 1
-    slug:
-      type: string
-      description: Identifier unik. Dipakai di URL `/devices/{device_id}/...`.
-      example: "rb-main"
     display_name:
       type: string
       example: "RB Main Office"
@@ -53,14 +49,9 @@ DeviceResponse:
 
 DeviceCreateRequest:
   type: object
-  description: Body POST /devices. Slug harus unik.
-  required: [slug, display_name, address, username, password]
+  description: Body POST /devices.
+  required: [display_name, address, username, password]
   properties:
-    slug:
-      type: string
-      minLength: 1
-      maxLength: 64
-      example: "rb-main"
     display_name:
       type: string
       minLength: 1

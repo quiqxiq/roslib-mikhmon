@@ -52,6 +52,10 @@ func (s *Stream) Register(g *gin.RouterGroup) {
 	g.GET("/stream/network/interfaces/:name/traffic", func(c *gin.Context) { mk(c).InterfaceTraffic(c) })
 	g.GET("/stream/network/interfaces/stats", func(c *gin.Context) { mk(c).InterfaceStats(c) })
 	g.GET("/stream/network/queues/stats", func(c *gin.Context) { mk(c).QueueStats(c) })
+	g.GET("/stream/network/queues/stats/:name", func(c *gin.Context) { mk(c).QueueStatsByName(c) })
+	g.GET("/stream/network/queues/parents/stats", func(c *gin.Context) { mk(c).ParentQueueStats(c) })
+	g.GET("/stream/system/routerboard", func(c *gin.Context) { mk(c).SystemRouterboard(c) })
+	g.GET("/stream/ping", func(c *gin.Context) { mk(c).Ping(c) })
 }
 
 // HotspotActive — /stream/hotspot/active (?mode=follow-only opsional).
@@ -293,6 +297,34 @@ func (s *Stream) InterfaceStats(c *gin.Context) {
 	sse.Stream(c, broker)
 }
 
+// Ping — /stream/ping?address=8.8.8.8 (inherent stream /ping).
+func (s *Stream) Ping(c *gin.Context) {
+	address := c.Query("address")
+	if address == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest,
+			dto.Err("VALIDATION", "address query param is required", c.Request.URL.Path))
+		return
+	}
+	topic := deviceTopic(c, sse.TopicPing(address))
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.Sys.PingStream(topic, address, func(sen *roslib.Sentence) {
+				if sen.Word() != "!re" {
+					return
+				}
+				b.Publish(sse.Event{Type: "ping", Data: sentenceToPingMap(sen)})
+			})
+		},
+		func() { _ = s.Sys.StopPingStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
 // QueueStats — /stream/network/queues/stats?interval=1s.
 func (s *Stream) QueueStats(c *gin.Context) {
 	interval := parseInterval(c, 1*time.Second)
@@ -309,6 +341,103 @@ func (s *Stream) QueueStats(c *gin.Context) {
 			})
 		},
 		func() { s.Net.StopStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// QueueStatsByName — /stream/network/queues/stats/:name?interval=1s.
+func (s *Stream) QueueStatsByName(c *gin.Context) {
+	name := c.Param("name")
+	interval := parseInterval(c, 1*time.Second)
+	topic := deviceTopic(c, sse.TopicQueueStatsByName(name, interval.String()))
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.Net.QueueStatsByNameStream(topic, name, interval, func(sen *roslib.Sentence) {
+				if sen.Word() != "!re" {
+					return
+				}
+				b.Publish(sse.Event{Type: "stats", Data: dto.QueueStatsEvent{
+					Name:    sen.Get("name"),
+					Target:  sen.Get("target"),
+					Parent:  sen.Get("parent"),
+					Bytes:   sen.Get("bytes"),
+					Packets: sen.Get("packets"),
+					Rate:    sen.Get("rate"),
+					Dropped: sen.Get("dropped"),
+					MaxLimit: sen.Get("max-limit"),
+				}})
+			})
+		},
+		func() { s.Net.StopStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// ParentQueueStats — /stream/network/queues/parents/stats?interval=1s.
+func (s *Stream) ParentQueueStats(c *gin.Context) {
+	interval := parseInterval(c, 1*time.Second)
+	topic := deviceTopic(c, sse.TopicParentQueueStats(interval.String()))
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.Net.ParentQueueStatsStream(topic, interval, func(sen *roslib.Sentence) {
+				if sen.Word() != "!re" {
+					return
+				}
+				b.Publish(sse.Event{Type: "stats", Data: dto.QueueStatsEvent{
+					Name:    sen.Get("name"),
+					Target:  sen.Get("target"),
+					Parent:  sen.Get("parent"),
+					Bytes:   sen.Get("bytes"),
+					Packets: sen.Get("packets"),
+					Rate:    sen.Get("rate"),
+					Dropped: sen.Get("dropped"),
+					MaxLimit: sen.Get("max-limit"),
+				}})
+			})
+		},
+		func() { s.Net.StopStream(topic) },
+	)
+	sse.Stream(c, broker)
+}
+
+// SystemRouterboard — /stream/system/routerboard?interval=2s.
+func (s *Stream) SystemRouterboard(c *gin.Context) {
+	interval := parseInterval(c, 2*time.Second)
+	topic := deviceTopic(c, sse.TopicRouterboard(interval.String()))
+	release, ok := reserveSSE(s.Hub, c, topic)
+	if !ok {
+		return
+	}
+	defer release()
+	broker := s.Hub.GetOrCreate(topic,
+		func(b *sse.Broker) error {
+			return s.Sys.MonitorRouterboard(topic, interval, func(sen *roslib.Sentence) {
+				if sen.Word() != "!re" {
+					return
+				}
+				b.Publish(sse.Event{Type: "routerboard", Data: dto.RouterboardEvent{
+					Routerboard:     sen.Get("routerboard") == "yes",
+					BoardName:       sen.Get("board-name"),
+					Model:           sen.Get("model"),
+					Revision:        sen.Get("revision"),
+					SerialNumber:    sen.Get("serial-number"),
+					FirmwareType:    sen.Get("firmware-type"),
+					CurrentFirmware: sen.Get("current-firmware"),
+					UpgradeFirmware: sen.Get("upgrade-firmware"),
+				}})
+			})
+		},
+		func() { s.Sys.StopMonitor(topic) },
 	)
 	sse.Stream(c, broker)
 }
@@ -396,6 +525,20 @@ func sentenceToTrafficMap(s *roslib.Sentence) any {
 		TxBitsPerSec:    s.IntOr("tx-bits-per-second", 0),
 		RxPacketsPerSec: s.IntOr("rx-packets-per-second", 0),
 		TxPacketsPerSec: s.IntOr("tx-packets-per-second", 0),
+	}
+}
+
+func sentenceToPingMap(s *roslib.Sentence) any {
+	seq, _ := strconv.Atoi(s.Get("seq"))
+	size, _ := strconv.Atoi(s.Get("size"))
+	ttl, _ := strconv.Atoi(s.Get("ttl"))
+	return dto.PingResult{
+		Seq:    seq,
+		Host:   s.Get("host"),
+		Size:   size,
+		TTL:    ttl,
+		TimeMs: parsePingTimeMs(s.Get("time")),
+		Status: s.Get("status"),
 	}
 }
 

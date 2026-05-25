@@ -58,7 +58,7 @@ function gotoVoucher() {
 }
 
 function refreshDevice() {
-  toast.info(`Refreshed ${dev.value?.slug ?? '—'}`)
+  toast.info(`Refreshed ${dev.value?.display_name ?? '—'}`)
 }
 </script>
 
@@ -77,7 +77,7 @@ function refreshDevice() {
       <Icon name="Server" :size="16" :style="{ color: 'var(--muted)' }" />
       <span class="text-sm" style="color: var(--muted)">Device</span>
       <Icon name="Chevron" :size="12" :style="{ color: 'var(--muted-2)' }" />
-      <span class="text-sm font-semibold">{{ dev?.displayName || dev?.slug || '—' }}</span>
+      <span class="text-sm font-semibold">{{ dev?.display_name || '—' }}</span>
       <StatusDot :status="mappedStatus" :show-label="false" />
     </div>
 

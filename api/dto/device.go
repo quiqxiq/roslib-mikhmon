@@ -10,7 +10,6 @@ import (
 // Password tidak di-expose.
 type DeviceResponse struct {
 	ID                  uint       `json:"id"`
-	Slug                string     `json:"slug"`
 	DisplayName         string     `json:"display_name"`
 	Address             string     `json:"address"`
 	Username            string     `json:"username"`
@@ -19,6 +18,7 @@ type DeviceResponse struct {
 	LastSeen            *time.Time `json:"last_seen,omitempty"`
 	LastError           string     `json:"last_error,omitempty"`
 	ExpiryCheckInterval string     `json:"expiry_check_interval"`
+	TimeZone            string     `json:"time_zone,omitempty"`
 	Active              bool       `json:"active"`
 	CreatedAt           time.Time  `json:"created_at"`
 }
@@ -35,7 +35,6 @@ type DeviceWriteResponse struct {
 func FromModelDevice(d model.MikrotikDevice) DeviceResponse {
 	return DeviceResponse{
 		ID:                  d.ID,
-		Slug:                d.Slug,
 		DisplayName:         d.DisplayName,
 		Address:             d.Address,
 		Username:            d.Username,
@@ -44,13 +43,13 @@ func FromModelDevice(d model.MikrotikDevice) DeviceResponse {
 		LastSeen:            d.LastSeen,
 		LastError:           d.LastError,
 		ExpiryCheckInterval: d.ExpiryCheckInterval,
+		TimeZone:            d.TimeZone,
 		Active:              d.Active,
 		CreatedAt:           d.CreatedAt,
 	}
 }
 
 type DeviceCreateRequest struct {
-	Slug                string `json:"slug"         binding:"required,min=1,max=64"`
 	DisplayName         string `json:"display_name" binding:"required,min=1,max=128"`
 	Address             string `json:"address"      binding:"required"`
 	Username            string `json:"username"     binding:"required"`
@@ -65,7 +64,6 @@ func (r DeviceCreateRequest) ToModel() model.MikrotikDevice {
 		interval = "2m"
 	}
 	return model.MikrotikDevice{
-		Slug:                r.Slug,
 		DisplayName:         r.DisplayName,
 		Address:             r.Address,
 		Username:            r.Username,

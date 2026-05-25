@@ -5,7 +5,7 @@ import type { Credentials } from '@/types/auth'
 
 export function useAuth() {
   const store = useAuthStore()
-  const { accessToken, refreshToken, user, isAuthenticated, role } = storeToRefs(store)
+  const { access_token, refresh_token, user, isAuthenticated, role } = storeToRefs(store)
 
   async function login(credentials: Credentials) {
     const tokens = await authService.login(credentials)
@@ -15,9 +15,9 @@ export function useAuth() {
   }
 
   async function logout() {
-    if (store.refreshToken) {
+    if (store.refresh_token) {
       try {
-        await authService.logout(store.refreshToken)
+        await authService.logout(store.refresh_token)
       } catch {
         // ignore — local reset still proceeds
       }
@@ -26,8 +26,8 @@ export function useAuth() {
   }
 
   return {
-    accessToken,
-    refreshToken,
+    access_token,
+    refresh_token,
     user,
     isAuthenticated,
     role,

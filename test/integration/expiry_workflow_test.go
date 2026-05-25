@@ -40,12 +40,10 @@ func setupLiveExpiry(t *testing.T, mode string, profileName string) (*expiry.Ser
 
 	devStore, profStore, txStore := testutil.NewStores(t)
 	mgr := devmgr.New(devStore, log)
-	const slug = "live-expiry-test"
-	mgr.RegisterForTest(slug, cs)
+	mgr.RegisterForTest(1, cs)
 
 	d := model.MikrotikDevice{
 		ID:                  1,
-		Slug:                slug,
 		DisplayName:         "live-expiry",
 		Address:             "router",
 		Active:              true,
@@ -117,28 +115,21 @@ func TestIntegration_Expiry_ntfMode_limitUptimeSet(t *testing.T) {
 	assert.Equal(t, "1s", got.LimitUptime, "ntf mode should set limit-uptime=1s")
 }
 
-func TestIntegration_Expiry_remcMode_recordsTransaction(t *testing.T) {
+// TestIntegration_Expiry_remcMode_userDeleted_noRecord: mode remc harus menghapus
+// user dari router tapi TIDAK mencatat transaksi. Recording adalah tanggung jawab
+// webhook login handler, bukan expiry service.
+func TestIntegration_Expiry_remcMode_userDeleted_noRecord(t *testing.T) {
 	const profileName = "default"
 	svc, cs, dev := setupLiveExpiry(t, "remc", profileName)
-	_, name := addExpiredHotspotUser(t, cs, profileName)
+	id, _ := addExpiredHotspotUser(t, cs, profileName)
 
 	ctx := testutil.Context(t)
 	require.NoError(t, expiryCheckDevice(t, svc, ctx, dev))
 
-	// Verifikasi tx tercatat dengan username yang sama.
-	devStore, _, txStore := testutil.NewStores(t)
-	_ = devStore // tidak dipakai di assert; getStores buat instance baru
-	month := strings.ToLower(time.Now().Format("Jan2006"))
-	txs, err := txStore.ListByDevice(ctx, dev.ID, month)
-	require.NoError(t, err)
-	// Filter berdasar username supaya tidak tertukar dengan data device lain.
-	var matched int
-	for _, tx := range txs {
-		if tx.Username == name {
-			matched++
-		}
-	}
-	assert.GreaterOrEqual(t, matched, 1, "expected at least 1 transaction for user %s", name)
+	// User harus sudah ke-delete.
+	_, err := cs.Hot.UserByID(ctx, id)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, mikrotik.ErrNotFound, "remc: user expired harus dihapus dari router")
 }
 
 // expiryCheckDevice membungkus call internal Service.checkDevice. Karena method

@@ -61,13 +61,13 @@ const ifaceCols = computed<ColumnDef<NetworkInterface>[]>(() => [
     cell: ({ row }) => h(Badge, { tone: 'cyan' }, () => row.original.type),
   },
   {
-    accessorKey: 'macAddress',
+    accessorKey: 'mac_address',
     header: 'MAC',
     cell: ({ row }) =>
       h(
         'span',
         { class: 'mono text-[11px]', style: 'color: var(--muted)' },
-        row.original.macAddress || '—',
+        row.original.mac_address || '—',
       ),
     meta: { mobileHidden: true },
   },
@@ -75,8 +75,8 @@ const ifaceCols = computed<ColumnDef<NetworkInterface>[]>(() => [
     id: 'total',
     header: 'Total Traffic (RX/TX)',
     cell: ({ row }) => {
-      const rx = row.original.rxBytes ?? 0
-      const tx = row.original.txBytes ?? 0
+      const rx = row.original.rx_bytes ?? 0
+      const tx = row.original.tx_bytes ?? 0
       return h(
         'span',
         { class: 'mono text-[12px]' },
@@ -103,9 +103,9 @@ const arpCols = computed<ColumnDef<ARPEntry>[]>(() => [
     cell: ({ row }) => h('span', { class: 'mono text-[13px]' }, row.original.address),
   },
   {
-    accessorKey: 'macAddress',
+    accessorKey: 'mac_address',
     header: 'MAC Address',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.macAddress),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.mac_address),
   },
   {
     accessorKey: 'interface',
@@ -130,13 +130,13 @@ const dhcpCols = computed<ColumnDef<DHCPLease>[]>(() => [
     cell: ({ row }) =>
       h('div', null, [
         h('div', { class: 'mono text-[13px]' }, row.original.address),
-        h('div', { class: 'text-[11px]', style: 'color: var(--muted)' }, row.original.hostName || '—'),
+        h('div', { class: 'text-[11px]', style: 'color: var(--muted)' }, row.original.host_name || '—'),
       ]),
   },
   {
-    accessorKey: 'macAddress',
+    accessorKey: 'mac_address',
     header: 'MAC',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.macAddress),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.mac_address),
     meta: { mobileHidden: true },
   },
   {
@@ -169,9 +169,9 @@ const queueCols = computed<ColumnDef<SimpleQueue>[]>(() => [
     meta: { mobileHidden: true },
   },
   {
-    accessorKey: 'maxLimit',
+    accessorKey: 'max_limit',
     header: 'Max Limit',
-    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.maxLimit || 'unlimited'),
+    cell: ({ row }) => h('span', { class: 'mono text-[12px]' }, row.original.max_limit || 'unlimited'),
   },
   {
     id: 'status',
@@ -277,8 +277,8 @@ function reload() {
               </div>
             </div>
           </div>
-          <div v-if="p.nextPool" class="mt-2 text-xs" style="color: var(--muted)">
-            Next Pool: <span class="mono">{{ p.nextPool }}</span>
+          <div v-if="p.next_pool" class="mt-2 text-xs" style="color: var(--muted)">
+            Next Pool: <span class="mono">{{ p.next_pool }}</span>
           </div>
         </Card>
         <div v-if="!(apiIPPools ?? []).length" class="card col-span-full p-8 text-center text-xs" style="color: var(--muted)">

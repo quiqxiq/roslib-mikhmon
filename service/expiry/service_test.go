@@ -54,8 +54,8 @@ func setupExpiryEnv(t *testing.T, mode string) (*Service, *tcpmock.Server, model
 }
 
 // (note: tests pakai OnSentence matcher-based dispatch supaya cocok
-//  per-command-path. Pakai -48h offset supaya past time tetap past walau
-//  ParseExpiry mengembalikan UTC sementara time.Now() bisa local TZ.)
+//  per-command-path. Pakai -48h offset untuk margin aman; timezone di-handle
+//  via d.TimeZone yang di-pass ke ParseExpiry — test helper pakai time.UTC.)
 
 func TestService_remMode_userDeleted(t *testing.T) {
 	svc, srv, dev := setupExpiryEnv(t, "rem")
@@ -80,7 +80,10 @@ func TestService_remMode_userDeleted(t *testing.T) {
 	), "user/remove =numbers=*1")
 }
 
-func TestService_remcMode_recordsTransaction(t *testing.T) {
+// TestService_remcMode_deletesUser_noRecord memverifikasi bahwa expiry service
+// HANYA menghapus user (lifecycle action), TIDAK mencatat transaksi.
+// Recording adalah tanggung jawab webhook login handler (hook_login.go).
+func TestService_remcMode_deletesUser_noRecord(t *testing.T) {
 	svc, srv, dev := setupExpiryEnv(t, "remc")
 
 	past := time.Now().Add(-48 * time.Hour)
@@ -96,14 +99,16 @@ func TestService_remcMode_recordsTransaction(t *testing.T) {
 	defer cancel()
 	require.NoError(t, svc.checkDevice(ctx, dev))
 
+	srv.AssertReceived(t, tcpmock.MatchAll(
+		tcpmock.MatchCommand("/ip/hotspot/user/remove"),
+		tcpmock.MatchHas("numbers", "*1"),
+	), "user/remove =numbers=*1")
+
+	// Expiry service tidak boleh insert transaksi — recording adalah tugas webhook.
 	month := strings.ToLower(time.Now().Format("Jan2006"))
 	txs, err := svc.txStore.ListByDevice(ctx, dev.ID, month)
 	require.NoError(t, err)
-	require.Len(t, txs, 1)
-	assert.Equal(t, "alice", txs[0].Username)
-	assert.Equal(t, 10000, txs[0].Price)
-	assert.Equal(t, 12000, txs[0].SellPrice)
-	assert.Equal(t, "default", txs[0].Profile)
+	assert.Empty(t, txs, "expiry service tidak boleh record transaksi; tanggung jawab webhook")
 }
 
 func TestService_ntfMode_setsLimitAndKicks(t *testing.T) {
@@ -186,6 +191,28 @@ func TestService_validComment_futureExpiry_skip(t *testing.T) {
 	srv.AssertNotReceived(t, tcpmock.MatchCommand("/ip/hotspot/user/remove"))
 }
 
+// TestService_profileNotConfigured_skip memverifikasi bahwa kalau profile_config
+// belum ada di DB (operator belum setup), expiry service SKIP tindakan apapun.
+// Ini mencegah penghapusan user secara default agresif (bug lama pakai Get→"rem").
+func TestService_profileNotConfigured_skip(t *testing.T) {
+	svc, srv, dev := setupExpiryEnv(t, "rem") // profile "default" di-seed dengan mode "rem"
+
+	past := time.Now().Add(-48 * time.Hour)
+	// User dengan profile "unconfigured" — tidak ada config di DB untuk profile ini
+	srv.OnSentence(tcpmock.MatchCommand("/ip/hotspot/user/print"),
+		tcpmock.UserPrintExpired("1", "alice", "unconfigured", past),
+		tcpmock.DoneReply(),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, svc.checkDevice(ctx, dev))
+
+	// Tidak ada remove karena profile "unconfigured" tidak ada di DB → skip
+	srv.AssertNotReceived(t, tcpmock.MatchCommand("/ip/hotspot/user/remove"))
+	srv.AssertNotReceived(t, tcpmock.MatchCommand("/ip/hotspot/user/set"))
+}
+
 func TestService_backoff_deviceNotConnected_returnsErr(t *testing.T) {
 	// Manager tanpa device terdaftar → Get return ErrDeviceNotConnected.
 	devStore, profStore, txStore := testutil.NewStores(t)
@@ -199,7 +226,7 @@ func TestService_backoff_deviceNotConnected_returnsErr(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	err := svc.checkDevice(ctx, model.MikrotikDevice{ID: 99, Slug: "missing"})
+	err := svc.checkDevice(ctx, model.MikrotikDevice{ID: 99})
 
 	// runChecker akan switch ke backoff atas error ini; di sini kita verifikasi
 	// surface ErrDeviceNotConnected langsung dari checkDevice.

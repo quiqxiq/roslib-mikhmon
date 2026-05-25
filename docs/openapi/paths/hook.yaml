@@ -1,0 +1,113 @@
+# Webhook endpoint untuk on-login script MikroTik (selling record).
+# TIDAK pakai JWT auth — dipanggil oleh /tool/fetch dari router.
+
+/hook/hotspot/login/{device_id}:
+  parameters:
+    - $ref: '../components/parameters.yaml#/DeviceIdPath'
+  post:
+    tags: [Webhook]
+    summary: Webhook on-login dari MikroTik (catat selling record)
+    security: [] # public: override global bearerAuth (router pakai /tool/fetch)
+    description: |
+      **Endpoint internal — dipanggil oleh on-login script MikroTik via
+      `/tool/fetch`.** Tidak butuh JWT (router tidak bisa pegang token).
+
+      **PERINGATAN MVP**: tidak ada IP whitelist atau shared secret.
+      Jangan expose port ke internet publik. Pakai firewall rule supaya
+      hanya reachable dari MikroTik router.
+
+      Flow:
+
+        1. Validasi `device_id` exists di DB.
+        2. Lookup `profile_config (device_id, profile)`.
+        3. Skip kalau mode tidak mencatat transaksi — hanya `remc` dan `ntfc`
+           yang lanjut. Mode `rem`, `ntf`, dan `"0"` (free) menghasilkan
+           `reason: non_recording_mode`.
+        4. Dedup berbasis window validity: skip kalau sudah ada record
+           `(device_id, username, comment="login")` yang dibuat dalam window
+           `validity` terakhir (re-login = koneksi ulang, bukan pembelian baru).
+           Login setelah window habis ter-record sebagai pembelian baru.
+        5. Insert transaction baru dengan price/sell_price/validity dari
+           profile_config.
+
+      Selalu return 200 OK untuk error non-fatal (router tidak punya retry
+      yang bermakna). Body response berisi `recorded` (bool) + `reason`
+      (skip reason kalau ada).
+    requestBody:
+      required: true
+      content:
+        application/x-www-form-urlencoded:
+          schema:
+            type: object
+            required: [user]
+            properties:
+              user:
+                type: string
+                description: Hotspot username (dari `$user`).
+                example: vc-12345
+                maxLength: 128
+              mac:
+                type: string
+                description: Client MAC address (dari `$"mac-address"`).
+                example: AA:BB:CC:DD:EE:FF
+                maxLength: 17
+              ip:
+                type: string
+                description: Client IP (dari `$address`).
+                example: 10.0.0.5
+                maxLength: 45
+              profile:
+                type: string
+                description: |
+                  Profile name (di-embed di script saat generate, tidak
+                  perlu lookup ke router). Kalau kosong → skip recording.
+                example: 1day
+                maxLength: 64
+    responses:
+      '200':
+        description: Webhook processed (recorded atau di-skip)
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '../schemas/envelope.yaml#/Envelope'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        recorded:
+                          type: boolean
+                          description: True kalau transaction baru di-insert.
+                        reason:
+                          type: string
+                          description: |
+                            Diisi kalau `recorded=false`. Nilai:
+                            `missing_profile`, `profile_not_configured`,
+                            `non_recording_mode`, `already_recorded`.
+                          enum:
+                            - missing_profile
+                            - profile_not_configured
+                            - non_recording_mode
+                            - already_recorded
+                        transaction_id:
+                          type: integer
+                          description: Diisi kalau `recorded=true`.
+      '400':
+        description: Bad request (invalid device id atau missing user)
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      '404':
+        description: Device tidak ditemukan di DB
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/envelope.yaml#/ErrorEnvelope'
+      '500':
+        description: Internal error (DB write failed, dst)
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/envelope.yaml#/ErrorEnvelope'

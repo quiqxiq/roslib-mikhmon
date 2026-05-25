@@ -5,15 +5,17 @@ export interface Credentials {
   password: string
 }
 
+// Sesuai dto.LoginResponse / dto.RefreshResponse backend (snake_case).
 export interface TokenPair {
-  accessToken: string
-  refreshToken: string
-  expiresIn: number
+  access_token: string
+  refresh_token: string
+  expires_in: number
 }
 
+// Sesuai dto.UserResponse backend.
 export interface AuthUser {
   id: string
   username: string
   role: Role
-  createdAt: string
+  created_at: string
 }

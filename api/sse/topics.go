@@ -47,3 +47,23 @@ func TopicInterfaceStats(interval string) string {
 func TopicQueueStats(interval string) string {
 	return "queue-stats:" + interval
 }
+
+// TopicPing untuk /ping stream ke target address.
+func TopicPing(address string) string {
+	return "ping:" + address
+}
+
+// TopicRouterboard untuk poll /system/routerboard/print interval.
+func TopicRouterboard(interval string) string {
+	return "routerboard:" + interval
+}
+
+// TopicQueueStatsByName untuk /queue/simple/print stats ?name=<name> interval.
+func TopicQueueStatsByName(name, interval string) string {
+	return "queue-stats-name:" + name + ":" + interval
+}
+
+// TopicParentQueueStats untuk /queue/simple/print stats ?dynamic=false interval.
+func TopicParentQueueStats(interval string) string {
+	return "queue-stats-parent:" + interval
+}

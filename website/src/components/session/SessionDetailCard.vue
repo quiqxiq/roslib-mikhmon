@@ -46,7 +46,7 @@ defineEmits<{
       </div>
       <div class="rounded-lg p-2.5" style="background: var(--bg-2)">
         <div style="color: var(--muted)">MAC</div>
-        <div class="mono mt-0.5 font-medium">{{ session.macAddress || '—' }}</div>
+        <div class="mono mt-0.5 font-medium">{{ session.mac_address || '—' }}</div>
       </div>
       <div class="rounded-lg p-2.5" style="background: var(--bg-2)">
         <div style="color: var(--muted)">Uptime</div>
@@ -54,15 +54,15 @@ defineEmits<{
       </div>
       <div class="rounded-lg p-2.5" style="background: var(--bg-2)">
         <div style="color: var(--muted)">Login by</div>
-        <div class="mono mt-0.5 font-medium">{{ session.loginBy || '—' }}</div>
+        <div class="mono mt-0.5 font-medium">{{ session.login_by || '—' }}</div>
       </div>
       <div class="rounded-lg p-2.5" style="background: var(--bg-2)">
         <div style="color: var(--muted)">Bytes In</div>
-        <div class="mono mt-0.5 font-medium">{{ fmtBytes(session.bytesIn) }}</div>
+        <div class="mono mt-0.5 font-medium">{{ fmtBytes(session.bytes_in) }}</div>
       </div>
       <div class="rounded-lg p-2.5" style="background: var(--bg-2)">
         <div style="color: var(--muted)">Bytes Out</div>
-        <div class="mono mt-0.5 font-medium">{{ fmtBytes(session.bytesOut) }}</div>
+        <div class="mono mt-0.5 font-medium">{{ fmtBytes(session.bytes_out) }}</div>
       </div>
     </div>
 

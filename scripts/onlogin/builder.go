@@ -13,6 +13,12 @@ import (
 // butuh escape kuotasi level kawat).
 //
 // Cross-ref: analisis §3.1.
+//
+// MVP refactor: writeRecordBlock (write ke /system/script RouterOS)
+// digantikan oleh writeWebhookBlock — fire-and-forget /tool/fetch ke Go
+// service. Selling record sekarang langsung ke PostgreSQL via webhook
+// handler. Mode "c" suffix (remc/ntfc) tetap dipertahankan untuk
+// kompatibilitas dengan service/expiry yang masih record di expiry time.
 func Build(o Options) string {
 	var b strings.Builder
 	writeMetadata(&b, o)
@@ -29,9 +35,10 @@ func Build(o Options) string {
 		writeLockMACBlock(&b)
 	}
 
-	if o.Mode.RecordsTransaction() {
-		writeRecordBlock(&b, o)
-	}
+	// Webhook fire-and-forget — dipanggil saat tiap login (bukan hanya
+	// first login). Webhook handler di Go service yang melakukan dedup
+	// supaya hanya first login per user yang ter-record.
+	writeWebhookBlock(&b, o)
 
 	return b.String()
 }
@@ -59,7 +66,6 @@ func writeExpiryBlock(b *strings.Builder, o Options) {
   :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={
     :local date  [/system clock get date];
     :local year  [:pick $date 7 11];
-    :local month [:pick $date 0 3];
     /sys sch add name="$user" disable=no start-date=$date interval="<VALIDITY>";
     :delay 5s;
     :local exp    [/sys sch get [/sys sch find where name="$user"] next-run];
@@ -91,23 +97,26 @@ func writeLockMACBlock(b *strings.Builder) {
 `)
 }
 
-// writeRecordBlock menulis snippet pembuatan /system/script transaksi.
-// Nama script mengikuti format konvensi mikhmon (analisis §3.1):
+// writeWebhookBlock menulis blok /tool/fetch fire-and-forget yang memanggil
+// Go service saat user login. URL dikonfigurasi via Options.WebhookURL.
 //
-//	<date>-|-<time>-|-<user>-|-<price>-|-<ip>-|-<mac>-|-<validity>-|-<profile>-|-<comment>
-func writeRecordBlock(b *strings.Builder, o Options) {
-	fmt.Fprintf(b, `:local mac $"mac-address";
-:local time [/system clock get time];
-/system script add name=("$date-|-$time-|-$user-|-%d-|-$"address"-|-$mac-|-%s-|-<PROFILE>-|-") owner=("<MONTHYEAR>") source=("$date") comment="mikhmon";
-`, o.Price, o.Validity)
-}
-
-// PostProcessNamePlaceholders meng-substitusi placeholder `<PROFILE>` dan
-// `<MONTHYEAR>` di hasil Build dengan nilai aktual. Dipisah dari Build()
-// supaya generator murni (no time.Now). Dipanggil oleh workflows/ saat
-// menempel script ke profile.
-func PostProcessNamePlaceholders(script, profile, monthYear string) string {
-	out := strings.ReplaceAll(script, "<PROFILE>", profile)
-	out = strings.ReplaceAll(out, "<MONTHYEAR>", monthYear)
-	return out
+// Kalau WebhookURL kosong, blok tidak di-emit (mis. Go service belum
+// di-konfigurasi → script tidak akan retry-loop ke endpoint kosong).
+//
+// `keep-result=no` supaya tidak menyimpan response file di flash.
+// `on-error={}` membuat script tidak gagal kalau Go service down — login
+// user tetap berhasil, hanya selling record yang di-skip.
+//
+// Variabel `$user`, `$"mac-address"`, dan `$address` disubstitusi oleh
+// hotspot subsystem RouterOS saat script di-eksekusi. ProfileName di-embed
+// di payload sebagai literal string supaya webhook handler tidak perlu
+// query RouterOS untuk tahu profile.
+func writeWebhookBlock(b *strings.Builder, o Options) {
+	if o.WebhookURL == "" {
+		return
+	}
+	fmt.Fprintf(b, `:do {
+  /tool fetch mode=http http-method=post keep-result=no url=("%s") http-data=("user=" . $user . "&mac=" . $"mac-address" . "&ip=" . $address . "&profile=%s");
+} on-error={}
+`, o.WebhookURL, o.ProfileName)
 }

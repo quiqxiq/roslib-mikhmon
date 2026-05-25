@@ -82,7 +82,7 @@ const isEdit = () => Boolean(props.user?.id)
         />
       </Field>
       <Field label="MAC Address (opsional)">
-        <Input v-model="form.macAddress as string" placeholder="AA:BB:CC:DD:EE:FF" />
+        <Input v-model="form.mac_address as string" placeholder="AA:BB:CC:DD:EE:FF" />
       </Field>
       <Field label="Comment">
         <Input v-model="form.comment as string" placeholder="" />
@@ -98,13 +98,13 @@ const isEdit = () => Boolean(props.user?.id)
 
     <div v-else-if="tab === 'limits'" class="space-y-3">
       <Field label="Uptime limit">
-        <Input v-model="form.limitUptime as string" placeholder="contoh: 4h, 1d" />
+        <Input v-model="form.limit_uptime as string" placeholder="contoh: 4h, 1d" />
       </Field>
       <Field label="Bytes total limit">
         <Input
-          :model-value="form.limitBytesTotal ? String(form.limitBytesTotal) : ''"
+          :model-value="form.limit_bytes_total ? String(form.limit_bytes_total) : ''"
           placeholder="contoh: 5368709120 (5GB dalam bytes)"
-          @update:model-value="(v) => (form.limitBytesTotal = Number(v))"
+          @update:model-value="(v) => (form.limit_bytes_total = Number(v))"
         />
       </Field>
       <div
@@ -124,15 +124,15 @@ const isEdit = () => Boolean(props.user?.id)
           </div>
           <div class="rounded-lg p-3" style="background: var(--bg-2)">
             <div class="text-xs" style="color: var(--muted)">MAC Address</div>
-            <div class="mono font-semibold">{{ form.macAddress ?? '—' }}</div>
+            <div class="mono font-semibold">{{ form.mac_address ?? '—' }}</div>
           </div>
           <div class="rounded-lg p-3" style="background: var(--bg-2)">
             <div class="text-xs" style="color: var(--muted)">Bytes In</div>
-            <div class="mono font-semibold">{{ form.bytesIn ?? 0 }}</div>
+            <div class="mono font-semibold">{{ form.bytes_in ?? 0 }}</div>
           </div>
           <div class="rounded-lg p-3" style="background: var(--bg-2)">
             <div class="text-xs" style="color: var(--muted)">Bytes Out</div>
-            <div class="mono font-semibold">{{ form.bytesOut ?? 0 }}</div>
+            <div class="mono font-semibold">{{ form.bytes_out ?? 0 }}</div>
           </div>
         </div>
       </div>

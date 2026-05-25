@@ -4,9 +4,9 @@ export interface PPPSecret {
   password?: string
   service: string
   profile: string
-  localAddress?: string
-  remoteAddress?: string
-  callerId?: string
+  local_address?: string
+  remote_address?: string
+  caller_id?: string
   disabled?: boolean
   comment?: string
 }
@@ -14,18 +14,18 @@ export interface PPPSecret {
 export interface PPPProfile {
   id: string
   name: string
-  localAddress?: string
-  remoteAddress?: string
-  rateLimit?: string
-  sessionTimeout?: string
-  onlyOne?: 'yes' | 'no' | 'default'
+  local_address?: string
+  remote_address?: string
+  rate_limit?: string
+  session_timeout?: string
+  only_one?: 'yes' | 'no' | 'default'
 }
 
 export interface PPPActive {
   id: string
   name: string
   service: string
-  callerId?: string
+  caller_id?: string
   address?: string
   uptime: string
   encoding?: string
@@ -34,6 +34,6 @@ export interface PPPActive {
 export interface PPPInactiveEvent {
   name: string
   profile: string
-  lastSeenAddress?: string
-  lastSeenAt?: string
+  last_seen_address?: string
+  last_seen_at?: string
 }

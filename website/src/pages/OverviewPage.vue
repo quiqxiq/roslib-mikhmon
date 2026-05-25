@@ -20,7 +20,7 @@ import { useSSE } from '@/composables/useSSE'
 import { useAuthStore } from '@/stores/auth'
 import { useDeviceQuery } from '@/queries/devices.queries'
 import { useHotspotUsersQuery, useHotspotActiveQuery } from '@/queries/hotspot.queries'
-import { useSalesQuery } from '@/queries/reports.queries'
+import { useSellingQuery } from '@/queries/reports.queries'
 import { buildStreamUrl } from '@/services/stream'
 import { fmtRp, fmtRpShort } from '@/utils/fmt'
 import type { ResourceStreamEvent } from '@/types/stream'
@@ -36,32 +36,30 @@ const { data: device } = useDeviceQuery(activeDeviceId.value ?? '')
 const { data: hotspotUsers } = useHotspotUsersQuery(activeDeviceId)
 const { data: hotspotActive } = useHotspotActiveQuery(activeDeviceId)
 
-// Hitung rentang 7 hari terakhir
-const last7DaysRange = computed(() => {
-  const to = new Date()
-  const from = new Date()
-  from.setDate(to.getDate() - 6)
-  const formatDate = (d: Date) => d.toISOString().split('T')[0]
-  return {
-    from: formatDate(from),
-    to: formatDate(to),
-  }
+// Backend filter via month ("jan2025"). Query bulan ini, lalu di-filter
+// 7 hari terakhir di client (created_at adalah ISO 8601 sortable).
+const currentMonth = computed(() => {
+  const d = new Date()
+  const m = d.toLocaleDateString('en-US', { month: 'short' }).toLowerCase()
+  return `${m}${d.getFullYear()}`
 })
 
-// Query real sales
-const { data: salesList } = useSalesQuery(
-  activeDeviceId,
-  computed(() => last7DaysRange.value.from),
-  computed(() => last7DaysRange.value.to),
-)
+const { data: salesList } = useSellingQuery(activeDeviceId, currentMonth)
 
-// Dynamic weekly trend data
+// Helper: ekstrak yyyy-mm-dd dari created_at ISO atau fallback ke sale_date.
+function txDateKey(t: { created_at?: string; sale_date?: string }): string {
+  if (t.created_at) return t.created_at.split('T')[0]
+  return t.sale_date ?? ''
+}
+
+// Dynamic weekly trend dari Transaction[]. Pakai sell_price kalau ada,
+// fallback ke price. Bucket per yyyy-mm-dd (UTC dari created_at).
 const computedSales7D = computed(() => {
   const list = salesList.value ?? []
   const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
-  
+
   const result: Record<string, { label: string; rev: number; count: number }> = {}
-  
+
   for (let i = 6; i >= 0; i--) {
     const d = new Date()
     d.setDate(d.getDate() - i)
@@ -69,16 +67,15 @@ const computedSales7D = computed(() => {
     const dayLabel = days[d.getDay()]
     result[dateStr] = { label: dayLabel, rev: 0, count: 0 }
   }
-  
+
   list.forEach((s) => {
-    if (!s.soldAt) return
-    const datePart = s.soldAt.split('T')[0].split(' ')[0]
+    const datePart = txDateKey(s)
     if (result[datePart]) {
-      result[datePart].rev += s.price
+      result[datePart].rev += s.sell_price || s.price
       result[datePart].count++
     }
   })
-  
+
   const entries = Object.values(result)
   return {
     labels: entries.map((e) => e.label),
@@ -87,12 +84,12 @@ const computedSales7D = computed(() => {
   }
 })
 
-// Today's revenue dynamic calculation
+// Today's revenue dynamic calculation (pakai sell_price > price).
 const todayRevenue = computed(() => {
   const today = new Date().toISOString().split('T')[0]
   return (salesList.value ?? [])
-    .filter((s) => s.soldAt && s.soldAt.startsWith(today))
-    .reduce((a, s) => a + s.price, 0)
+    .filter((s) => txDateKey(s) === today)
+    .reduce((a, s) => a + (s.sell_price || s.price), 0)
 })
 
 // Yesterday's revenue dynamic calculation
@@ -101,8 +98,8 @@ const yesterdayRevenue = computed(() => {
   yest.setDate(yest.getDate() - 1)
   const yestStr = yest.toISOString().split('T')[0]
   return (salesList.value ?? [])
-    .filter((s) => s.soldAt && s.soldAt.startsWith(yestStr))
-    .reduce((a, s) => a + s.price, 0)
+    .filter((s) => txDateKey(s) === yestStr)
+    .reduce((a, s) => a + (s.sell_price || s.price), 0)
 })
 
 const revenueDeltaText = computed(() => {
@@ -122,16 +119,25 @@ const revenueTrend = computed(() => {
   return today > yest ? 'up' : today < yest ? 'down' : 'flat'
 })
 
-const total7DRevenue = computed(() => (salesList.value ?? []).reduce((a, s) => a + s.price, 0))
-const total7DCount = computed(() => (salesList.value ?? []).length)
+// Limit ke 7 hari terakhir (frontend filter — backend hanya filter month).
+const last7DTxs = computed(() => {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 6)
+  const cutoffStr = cutoff.toISOString().split('T')[0]
+  return (salesList.value ?? []).filter((s) => txDateKey(s) >= cutoffStr)
+})
+const total7DRevenue = computed(() =>
+  last7DTxs.value.reduce((a, s) => a + (s.sell_price || s.price), 0),
+)
+const total7DCount = computed(() => last7DTxs.value.length)
 
 // SSE: system resource stream (live)
 const resourceUrl = computed(() =>
   activeDeviceId.value ? buildStreamUrl(activeDeviceId.value, 'system/resource') : null,
 )
-const { parsed: resourceEvent } = useSSE<ResourceStreamEvent>(resourceUrl, ['message'])
+const { parsed: resourceEvent } = useSSE<ResourceStreamEvent>(resourceUrl, ['resource'])
 
-// Resource values
+// Resource values — backend sends flat SystemResource fields directly
 const cpu = ref(0)
 const ram = ref(0)
 const cpuFreq = ref<number | null>(null)
@@ -142,22 +148,21 @@ const version = ref('')
 const uptime = ref('—')
 
 watch(resourceEvent, (ev) => {
-  if (!ev?.resource) return
-  const r = ev.resource
-  cpu.value = r.cpuLoad ?? 0
-  const total = r.totalMemory ?? 0
-  const free = r.freeMemory ?? 0
+  if (!ev) return
+  cpu.value = ev.cpu_load ?? 0
+  const total = ev.total_memory ?? 0
+  const free = ev.free_memory ?? 0
   const used = total - free
   ramTotalMB.value = Math.round(total / 1024 / 1024)
   ramUsedMB.value = Math.round(used / 1024 / 1024)
   ram.value = total > 0 ? Math.round((used / total) * 100) : 0
-  cpuFreq.value = r.cpuFrequency ?? null
-  boardName.value = r.boardName ?? ''
-  version.value = r.version ?? ''
-  uptime.value = r.uptime ?? '—'
+  cpuFreq.value = ev.cpu_frequency ?? null
+  boardName.value = ev.board_name ?? ''
+  version.value = ev.version ?? ''
+  uptime.value = ev.uptime ?? '—'
 })
 
-// SSE: traffic stream
+// SSE: interface stats stream — backend sends flat per-row fields (event: stats)
 const trafficUrl = computed(() =>
   activeDeviceId.value ? buildStreamUrl(activeDeviceId.value, 'network/interfaces/stats') : null,
 )
@@ -165,14 +170,16 @@ const trafficUrl = computed(() =>
 const rxLive = useLiveSeries(30)
 const txLive = useLiveSeries(30)
 
-const { parsed: trafficEvent } = useSSE(trafficUrl, ['message'])
-watch(trafficEvent, (ev: any) => {
-  if (!ev?.interfaces) return
-  const ifaces = ev.interfaces as Array<{ rxBytes: number; txBytes: number }>
-  const totalRx = ifaces.reduce((s, i) => s + (i.rxBytes ?? 0), 0)
-  const totalTx = ifaces.reduce((s, i) => s + (i.txBytes ?? 0), 0)
-  rxLive.pushPoint(totalRx / 1024 / 1024)
-  txLive.pushPoint(totalTx / 1024 / 1024)
+const { parsed: trafficEvent } = useSSE<{ rx_byte?: number; tx_byte?: number }>(trafficUrl, [
+  'stats',
+])
+watch(trafficEvent, (ev) => {
+  if (!ev) return
+  // Each event is a single interface row with flat rx_byte / tx_byte fields
+  const rx = ev.rx_byte ?? 0
+  const tx = ev.tx_byte ?? 0
+  rxLive.pushPoint(rx / 1024 / 1024)
+  txLive.pushPoint(tx / 1024 / 1024)
 })
 
 // Derived computed
@@ -185,7 +192,7 @@ const greeting = computed(() => {
   return `Selamat datang kembali, ${name}`
 })
 
-const deviceSlug = computed(() => device.value?.displayName || device.value?.slug || activeDeviceId.value || '—')
+const deviceLabel = computed(() => device.value?.display_name || activeDeviceId.value || '—')
 const deviceStatus = computed(() => {
   const s = device.value?.status
   if (!s) return 'offline' as const
@@ -215,7 +222,7 @@ function go(path: string) {
       <template #default>
         <div class="ph-sub">
           Ringkasan operasional
-          <b style="color: var(--text-2); font-weight: 500">{{ deviceSlug }}</b>
+          <b style="color: var(--text-2); font-weight: 500">{{ deviceLabel }}</b>
           ·
           {{
             new Date().toLocaleDateString('id-ID', {

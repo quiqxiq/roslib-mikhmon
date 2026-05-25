@@ -57,3 +57,46 @@ ProfileConfigUpsertRequest:
     lock_mac:
       type: boolean
       default: false
+
+ProfileConfigSyncResponse:
+  type: object
+  description: |
+    Ringkasan hasil sync profile router → DB. Tiap kategori berisi
+    profile name (string) yang masuk kategori tsb.
+  required: [synced, created, orphan, injected, inject_failed]
+  properties:
+    synced:
+      type: array
+      items: { type: string }
+      description: |
+        Profile router yang sudah ada di DB → tidak ditimpa (operator value
+        seperti price/mode dipertahankan).
+      example: ["default", "30day"]
+    created:
+      type: array
+      items: { type: string }
+      description: |
+        Profile router baru yang di-insert ke DB dengan default
+        `expiry_mode: "0"`, `price: 0`, `validity: ""`. Operator perlu PUT
+        untuk set price/mode agar selling record aktif.
+      example: ["new-promo"]
+    orphan:
+      type: array
+      items: { type: string }
+      description: |
+        Config DB yang profile-nya sudah hilang dari router (mungkin
+        di-delete via WinBox/CLI). Tidak dihapus otomatis dari DB.
+      example: ["legacy-profile"]
+    injected:
+      type: array
+      items: { type: string }
+      description: |
+        Profile yang on-login script-nya berhasil di-push ke router.
+      example: ["default", "30day"]
+    inject_failed:
+      type: array
+      items: { type: string }
+      description: |
+        Profile yang gagal di-inject. Format: `<profile>: <error>`. Tidak
+        fatal — sync tetap completed dan profile lain tetap di-process.
+      example: []

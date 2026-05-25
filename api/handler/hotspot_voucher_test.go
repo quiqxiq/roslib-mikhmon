@@ -31,7 +31,7 @@ func setupVoucherEngine(t *testing.T) (*gin.Engine, *tcpmock.Server) {
 	r := gin.New()
 
 	// Middleware inject ClientSet sebagai context value, mirip
-	// DeviceMiddleware production tapi tanpa lookup slug.
+	// DeviceMiddleware production tapi tanpa lookup device ID.
 	r.Use(func(c *gin.Context) {
 		c.Set("device_clients", cs)
 		c.Next()

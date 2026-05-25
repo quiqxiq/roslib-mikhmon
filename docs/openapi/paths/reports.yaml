@@ -103,5 +103,5 @@
               format: binary
               example: |
                 sale_date,sale_time,username,profile,price,sell_price,validity,mac,ip,comment
-                jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,expiry-auto
+                jan/05/2026,10:30:21,vc-a1b2c3d4,default,10000,12000,168h,AA:BB:CC:DD:EE:FF,10.0.0.5,login
       '404': { $ref: '../components/responses.yaml#/ErrorNotFound' }

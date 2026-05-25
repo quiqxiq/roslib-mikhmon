@@ -18,6 +18,7 @@ func (h *SystemInfo) Register(g *gin.RouterGroup) {
 	g.GET("/system/resource", func(c *gin.Context) { mk(c).Resource(c) })
 	g.GET("/system/routerboard", func(c *gin.Context) { mk(c).Routerboard(c) })
 	g.GET("/system/clock", func(c *gin.Context) { mk(c).Clock(c) })
+	g.GET("/system/license", func(c *gin.Context) { mk(c).License(c) })
 }
 
 func (h *SystemInfo) Identity(c *gin.Context) {
@@ -65,4 +66,13 @@ func (h *SystemInfo) Clock(c *gin.Context) {
 		return
 	}
 	WriteOK(c, dto.FromDomainClock(clk))
+}
+
+func (h *SystemInfo) License(c *gin.Context) {
+	l, err := h.Sys.License(c.Request.Context())
+	if err != nil {
+		WriteErr(c, err)
+		return
+	}
+	WriteOK(c, dto.FromDomainLicense(l))
 }

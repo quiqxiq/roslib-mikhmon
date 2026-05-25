@@ -1,19 +1,18 @@
-// Device response dari GET /devices — sesuai dto.DeviceResponse backend.
+// Device response dari GET /devices — sesuai dto.DeviceResponse backend (snake_case).
 export interface Device {
   id: number
-  slug: string
-  /** Display name router (mis. "Mikrotik HAP ac²"). Sebelumnya bernama `name`. */
-  displayName: string
+  /** Display name router (mis. "Mikrotik HAP ac²"). */
+  display_name: string
   address: string
   username: string
-  useTls: boolean
+  use_tls: boolean
   /** 'connected' | 'disconnected' | 'error' | 'connecting' */
   status: string
   active: boolean
-  lastSeen?: string | null
-  lastError?: string
-  expiryCheckInterval: string
-  createdAt: string
+  last_seen?: string | null
+  last_error?: string
+  expiry_check_interval: string
+  created_at: string
 }
 
 export interface DeviceWriteResponse {
@@ -22,13 +21,12 @@ export interface DeviceWriteResponse {
   warning?: string
 }
 
+// Request body untuk POST /devices & PUT /devices/{id} — snake_case 1:1.
 export interface DeviceInput {
-  slug: string
-  /** Nama tampilan router. Dikirim sebagai `display_name` ke backend. */
-  displayName: string
+  display_name: string
   address: string
   username: string
   password: string
-  useTls?: boolean
-  expiryCheckInterval?: string
+  use_tls?: boolean
+  expiry_check_interval?: string
 }

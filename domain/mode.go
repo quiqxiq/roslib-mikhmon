@@ -29,8 +29,8 @@ func (m ExpiredMode) IsValid() bool {
 	return false
 }
 
-// RecordsTransaction true jika mode menyimpan transaksi sebagai
-// /system/script (mode "remc" atau "ntfc").
+// RecordsTransaction true jika mode mencatat penjualan ke PostgreSQL saat
+// user login via webhook (mode "remc" atau "ntfc").
 func (m ExpiredMode) RecordsTransaction() bool {
 	return m == ModeRemoveRecord || m == ModeNoticeRecord
 }

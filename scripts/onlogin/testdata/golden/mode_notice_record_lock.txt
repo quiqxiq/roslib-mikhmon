@@ -5,7 +5,6 @@
   :if ($ucode = "vc" or $ucode = "up" or $comment = "") do={
     :local date  [/system clock get date];
     :local year  [:pick $date 7 11];
-    :local month [:pick $date 0 3];
     /sys sch add name="$user" disable=no start-date=$date interval="30d";
     :delay 5s;
     :local exp    [/sys sch get [/sys sch find where name="$user"] next-run];
@@ -29,6 +28,3 @@
 }
 :local mac $"mac-address";
 /ip hotspot user set mac-address=$mac [find where name=$user];
-:local mac $"mac-address";
-:local time [/system clock get time];
-/system script add name=("$date-|-$time-|-$user-|-25000-|-$"address"-|-$mac-|-30d-|-<PROFILE>-|-") owner=("<MONTHYEAR>") source=("$date") comment="mikhmon";

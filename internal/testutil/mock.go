@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// MockDeviceSlug adalah slug konsisten untuk device dummy yang dipakai
+// MockDeviceID adalah ID konsisten untuk device dummy yang dipakai
 // di test wiring. Tests yang butuh akses lewat devmgr.Manager.Get
-// memakai slug ini.
-const MockDeviceSlug = "test-device"
+// memakai ID ini.
+const MockDeviceID = 1
 
 // NewMockDevice start tcpmock server (sudah accept-login) lalu dial
 // *roslib.Device ke alamatnya. Cleanup dev+srv otomatis via t.Cleanup.
@@ -84,7 +84,7 @@ func NewTestClientSet(t *testing.T) (*devmgr.ClientSet, *tcpmock.Server) {
 }
 
 // NewTestDevMgr menyiapkan *devmgr.Manager dengan satu device dummy
-// (slug=MockDeviceSlug, ID=1) terdaftar via RegisterForTest dan terhubung
+// (ID=MockDeviceID) terdaftar via RegisterForTest dan terhubung
 // ke tcpmock server. Mengembalikan manager, mock server, dan model device
 // dummy yang siap dipakai untuk seed DB pada test expiry service.
 func NewTestDevMgr(t *testing.T) (*devmgr.Manager, *tcpmock.Server, model.MikrotikDevice) {
@@ -95,11 +95,10 @@ func NewTestDevMgr(t *testing.T) (*devmgr.Manager, *tcpmock.Server, model.Mikrot
 	cs, srv := NewTestClientSet(t)
 
 	mgr := devmgr.New(nil, log)
-	mgr.RegisterForTest(MockDeviceSlug, cs)
+	mgr.RegisterForTest(MockDeviceID, cs)
 
 	dev := model.MikrotikDevice{
-		ID:                  1,
-		Slug:                MockDeviceSlug,
+		ID:                  MockDeviceID,
 		DisplayName:         "mock-device",
 		Address:             srv.Addr(),
 		Username:            "test",

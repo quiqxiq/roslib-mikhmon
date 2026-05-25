@@ -81,7 +81,7 @@ divalidasi via integration test sebelum diperbaiki.
 | `api/handler/*` | Per-resource handler tipis. Pattern `Register(g)`. | mikrotik/*, workflows, dto |
 | `api/dto/*` | Request/response DTO + mapper FromDomain/ToArgs. | domain |
 | `api/sse/*` | Hub (registry topic→Broker), Broker (fan-out + refcount), writer SSE protocol. | gin |
-| `service/devmgr` | Manager koneksi router (`active map[slug]*ClientSet`), hook lifecycle. | roslib, mikrotik/*, store, workflows |
+| `service/devmgr` | Manager koneksi router (`active map[deviceID]*ClientSet`), hook lifecycle. | roslib, mikrotik/*, store, workflows |
 | `service/expiry` | Per-device goroutine yang parse comment expiry user, eksekusi mode (rem/ntf/remc/ntfc), record transaksi ke DB. | devmgr, store, workflows |
 | `service/metrics` | Streams system_resource, interface_stats, hotspot_user_*, hotspot_active, ppp_active, queue_stats → InfluxDB3. | influxdb3, devmgr |
 | `mikrotik/*` | Thin sub-client per modul (hotspot, system, network, ppp, syslog). Per-resource file + `_stream.go` + `monitor.go`. | roslib |
@@ -126,11 +126,11 @@ DevMgr.connect(d):                                       store.UpdateStatus
    roslib.New(m.ctx, Options{                            (mapping connected/
        Address, Username, Password,                       disconnected/error)
        Logger, OnStatusChange })  ← TLS HILANG (lihat 3.2)
-   build ClientSet{Hot, Sys, Net, PPP, Log, WF}
-   active[slug] = cs
-   store.UpdateStatus("connected")
-   OnDeviceConnected(d)  ─────────► expSvc.StartDevice
-                                    metricsSvc.StartDevice
+    build ClientSet{Hot, Sys, Net, PPP, Log, WF}
+    active[deviceID] = cs
+    store.UpdateStatus("connected")
+    OnDeviceConnected(d)  ─────────► expSvc.StartDevice
+                                     metricsSvc.StartDevice
 ```
 
 Catatan: `m.ctx` adalah root server context — koneksi roslib hidup sepanjang server,
@@ -175,7 +175,7 @@ Buffer subscriber 32 event; kalau full, event di-drop untuk subscriber tsb (liha
 
 | Tabel | Field utama | Catatan |
 |---|---|---|
-| `mikrotik_devices` | slug (unique), display_name, address, username, password, use_tls, status, last_seen, last_error, expiry_check_interval (default "2m"), active. | Password plaintext. |
+| `mikrotik_devices` | display_name, address, username, password, use_tls, status, last_seen, last_error, expiry_check_interval (default "2m"), active. | Password plaintext. |
 | `hotspot_profile_configs` | device_id+profile_name (unique pair), expiry_mode (0/rem/ntf/remc/ntfc), validity, price, sell_price, lock_mac. | Default fallback `"rem"` di store (`profile_config_store.go:31-37`) — tidak crash kalau row tidak ada. |
 | `transactions` | device_id, sale_date/time/month, username, price, sell_price, IP, MAC, validity, profile, comment. | Menggantikan `/system/script` di RouterOS. |
 | `users` | username, email, password, role, active. | **Stub — tidak dipakai handler manapun**. |
@@ -195,7 +195,7 @@ Ringkasan perbedaan paling besar (untuk peta detail per-command lihat
 | Harga & validity | Di metadata `:put` on-login script | Tabel `hotspot_profile_configs`. |
 | Realtime traffic/log | AJAX polling 3s, koneksi konek-putus tiap kali | SSE persisten + roslib native streaming (`interval=` / `follow`) + broker fan-out. |
 | Metrics historis | Tidak ada | InfluxDB3 + `metrics/service.go` (system_resource, interface_stats, hotspot_user_bytes/packets, hotspot_active, ppp_active, queue_stats). |
-| Multi-router | Tidak ada (1 instance = 1 router via session) | `devmgr.Manager` + `/devices/:device_id/*` di URL. |
+| Multi-router | Tidak ada (1 instance = 1 router via session) | `devmgr.Manager` + `/devices/:device_id/*` di URL (device_id = uint). |
 | On-login & transaction script | String inline di PHP | Pure-function builder di `scripts/onlogin`, `scripts/onevent`, `scripts/transaction`, `scripts/quickprint` (golden-tested). |
 | Operator auth | `index.php` session-based | **Tidak ada** (lihat 3.2). |
 
@@ -244,7 +244,7 @@ Fix: pakai `context.Background()` untuk write status terminal, atau dedicated
 shutdown ctx dengan timeout pendek.
 
 #### 🟠 `expiry.runChecker` spam log saat device disconnect
-Setiap tick (default 2 menit) panggil `s.devMgr.Get(d.Slug)`. Saat device
+Setiap tick (default 2 menit) panggil `s.devMgr.Get(d.ID)`. Saat device
 disconnect, return error → loop log "expiry: check failed" terus-menerus.
 Tidak ada backoff / state machine.
 
@@ -255,7 +255,7 @@ transisi state.
 #### 🟠 `Devices.Update` re-connect tidak tunggu old connection benar-benar closed
 `api/handler/devices.go:104-105`:
 ```
-h.DevMgr.Remove(existing.Slug)
+h.DevMgr.Remove(existing.ID)
 _ = h.DevMgr.Add(context.Background(), existing)
 ```
 `Remove` hanya `cs.Dev.Close()` (`manager.go:115`) yang async — roslib supervisor
@@ -393,7 +393,7 @@ ctx kalau di-aware (perlu API tambahan di roslib).
 Lihat 3.1 (broker silent drop). Tidak ada visibility.
 
 #### 🟢 Logrus JSON formatter konsisten ✅
-Bagus, tapi `expiry.log` dan `metrics.log` pakai `WithField("device", slug)`
+Bagus, tapi `expiry.log` dan `metrics.log` pakai `WithField("device", displayName)`
 tidak konsisten (kadang per-checker, kadang per-stream). Standarkan.
 
 ### 3.4 Test coverage
@@ -524,7 +524,7 @@ Fix: bikin `roslib.MockDevice` (atau wrapper interface kecil yang
 | **ExpiredMode** | Enum `domain.ExpiredMode`: `0` (none), `rem` (remove), `ntf` (notice/limit=1s), `remc` (rem+record), `ntfc` (ntf+record). |
 | **mikhmon expiry format** | `"jan/02/2006 15:04:05"` di field comment user — 19 char pertama di-parse. |
 | **Bulk separator** | `~` untuk multi-ID di URL mikhmonv3 (preserved di workflows.ParseBulkIDs). |
-| **deviceTopic** | Helper di `api/handler/stream.go` yang scope topic per-device (`<slug>:<base>`) supaya Hub global tidak mix stream antar router. |
+| **deviceTopic** | Helper di `api/handler/stream.go` yang scope topic per-device (`<deviceID>:<base>`) supaya Hub global tidak mix stream antar router. |
 | **WriteTimeout=0** | Setting di `http.Server` (sengaja) untuk allow SSE long-lived; trade-off → slow-loris vulnerable. |
 | **Replace directive** | `go.mod` line 5: `replace github.com/quiqxiq/roslib => ../`. Library dikembangkan side-by-side, bukan via tag. |
 

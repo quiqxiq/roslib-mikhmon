@@ -15,6 +15,7 @@ import { useActiveDevice } from '@/composables/useActiveDevice'
 import { useHotspotProfilesQuery } from '@/queries/hotspot.queries'
 import { useProfileConfigsQuery } from '@/queries/profile-config.queries'
 import { hotspotMiscService } from '@/services/hotspot-misc'
+import type { GeneratedVoucher } from '@/types/hotspot'
 import VoucherPrintModal from '@/components/hotspot/VoucherPrintModal.vue'
 
 const toast = useToast()
@@ -24,13 +25,26 @@ const { activeDeviceId } = useActiveDevice()
 const { data: apiProfiles, isLoading: loadingProfiles } = useHotspotProfilesQuery(activeDeviceId)
 const { data: localConfigs } = useProfileConfigsQuery(activeDeviceId)
 
+// Charset: nilai UI → nilai backend (domain.Charset)
+const CHARSET_MAP: Record<string, string> = {
+  ALPHA_UPPER: 'upper',
+  NUMERIC: 'number',
+  ALPHANUM: 'upper_number',
+}
+
+// pwdMode UI → user_mode backend
+const USER_MODE_MAP: Record<string, 'vc' | 'up'> = {
+  same: 'vc',
+  random: 'up',
+}
+
 const count = ref(25)
 const server = ref('all')
 const profileName = ref('')
 const price = ref(0)
 const validity = ref('')
 const speed = ref('')
-const mode = ref<'random' | 'prefix' | 'sequential'>('random')
+const mode = ref<'random' | 'prefix'>('random')
 const prefix = ref('VC')
 const charLen = ref(6)
 const charset = ref('ALPHA_UPPER')
@@ -38,20 +52,23 @@ const comment = ref('')
 const generating = ref(false)
 const view = ref<'mini' | 'standar' | 'list'>('standar')
 const printModalOpen = ref(false)
-const pwdMode = ref('same')
+const pwdMode = ref<'same' | 'random'>('same')
 
-// Merge standard RouterOS profiles dengan Mikhmon configs (harga/validity)
+// Merge standard RouterOS profiles dengan Mikhmon configs (harga/validity).
+// Key by profile_name (sebelumnya `profile`).
 const mergedProfiles = computed(() => {
   const ros = apiProfiles.value ?? []
   const configs = localConfigs.value ?? []
-  const configMap = new Map(configs.map((c) => [c.profile, c]))
+  const configMap = new Map(configs.map((c) => [c.profile_name, c]))
   return ros.map((p) => {
     const config = configMap.get(p.name)
     return {
       name: p.name,
-      speed: p.rateLimit || 'unlimited',
+      speed: p.rate_limit || 'unlimited',
       validity: config?.validity || '1d',
-      price: config?.price || 0,
+      // Pakai sell_price kalau ada, fallback ke price (modal). Kalau belum
+      // ada config sama sekali → 0 (operator bisa edit manual di form).
+      price: config?.sell_price || config?.price || 0,
     }
   })
 })
@@ -80,9 +97,16 @@ interface Voucher {
   price: number
   speed: string
   validity: string
+  userMode: 'vc' | 'up'
 }
 
 const result = ref<Voucher[] | null>(null)
+
+// Computed untuk pass ke VoucherPrintModal
+const generatedForPrint = computed<GeneratedVoucher[]>(() =>
+  result.value?.map((v) => ({ id: '', username: v.code, password: v.password })) ?? [],
+)
+const currentUserMode = computed<'vc' | 'up'>(() => USER_MODE_MAP[pwdMode.value] ?? 'vc')
 
 function chooseProfile(name: string) {
   profileName.value = name
@@ -101,28 +125,37 @@ async function generate() {
   }
   generating.value = true
   try {
-    const req = {
-      count: count.value,
+    const userMode = USER_MODE_MAP[pwdMode.value] ?? 'vc'
+    const res = await hotspotMiscService.generateVouchers(activeDeviceId.value, {
+      batch_size: count.value,
       profile: profileName.value,
-      prefix: mode.value === 'prefix' ? prefix.value : undefined,
+      charset: CHARSET_MAP[charset.value] ?? charset.value,
       length: charLen.value,
-      charset: charset.value,
+      user_mode: userMode,
+      prefix: mode.value === 'prefix' ? prefix.value : undefined,
+      validity: validity.value || undefined,
+      price: price.value || undefined,
       comment: comment.value || undefined,
-    }
-    const vouchers = await hotspotMiscService.generateVouchers(activeDeviceId.value, req)
-    
-    result.value = vouchers.map((v) => ({
-      code: v.name,
-      password: v.comment || '', // Mikhmon password disimpan di comment
-      profile: v.profile,
+      server: server.value !== 'all' ? server.value : undefined,
+    })
+
+    result.value = res.vouchers.map((v) => ({
+      code: v.username,
+      password: v.password,
+      profile: profileName.value,
       price: price.value,
       speed: speed.value,
       validity: validity.value,
+      userMode,
     }))
-    
-    toast.success(`${vouchers.length} voucher berhasil di-generate!`)
-  } catch (err: any) {
-    toast.error(`Gagal men-generate voucher: ${err.message || err}`)
+
+    if (res.partial) {
+      toast.warning(`${res.count} dari ${count.value} voucher berhasil (${res.error})`)
+    } else {
+      toast.success(`${res.count} voucher berhasil di-generate!`)
+    }
+  } catch (err) {
+    toast.error(`Gagal men-generate voucher: ${(err as Error).message || err}`)
   } finally {
     generating.value = false
   }
@@ -178,7 +211,7 @@ async function copyOne(code: string, password: string) {
       title="Voucher Generator"
       subtitle="Buat batch voucher hotspot dengan format custom"
     >
-      <template v-slot:right v-if="result">
+      <template v-if="result" #right>
         <Badge tone="success" dot>{{ result.length }} voucher berhasil dibuat</Badge>
         <button class="btn btn-sm" type="button" @click="copyAll">
           <Icon name="Copy" :size="13" />
@@ -307,9 +340,9 @@ async function copyOne(code: string, password: string) {
               <Select
                 v-model="charset"
                 :options="[
-                  { value: 'ALPHA_UPPER', label: 'ABCDEFGHJKMNPQRSTUVWXYZ' },
-                  { value: 'NUMERIC', label: '0-9' },
-                  { value: 'ALPHANUM', label: 'A-Z 0-9' },
+                  { value: 'ALPHA_UPPER', label: 'Huruf Besar (A-Z)' },
+                  { value: 'NUMERIC', label: 'Angka (0-9)' },
+                  { value: 'ALPHANUM', label: 'Huruf Besar + Angka' },
                 ]"
               />
             </Field>
@@ -317,9 +350,8 @@ async function copyOne(code: string, password: string) {
               <Segmented
                 v-model="pwdMode"
                 :options="[
-                  { value: 'same', label: 'Sama dengan user' },
-                  { value: 'random', label: 'Acak' },
-                  { value: 'fixed', label: 'Fixed (1234)' },
+                  { value: 'same', label: 'Voucher Code (user = pass)' },
+                  { value: 'random', label: 'User + Password Berbeda' },
                 ]"
               />
             </Field>
@@ -463,6 +495,13 @@ async function copyOne(code: string, password: string) {
         />
       </div>
     </div>
-    <VoucherPrintModal :open="printModalOpen" @close="printModalOpen = false" />
+    <VoucherPrintModal
+      :open="printModalOpen"
+      :generated-vouchers="generatedForPrint"
+      :generated-mode="currentUserMode"
+      :generated-validity="validity"
+      :generated-price="price"
+      @close="printModalOpen = false"
+    />
   </div>
 </template>
