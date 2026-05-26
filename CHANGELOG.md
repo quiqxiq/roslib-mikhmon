@@ -22,6 +22,12 @@ device encryption ditunda ke fase 5 (separate plan).
 
 ### Added
 
+- **`DeviceResponse.time_zone`** — field IANA timezone router (mis. `"Asia/Jakarta"`).
+  Di-fetch otomatis dari `/system/clock` saat devmgr connect, di-persist ke DB,
+  dan di-expose di API response. Dipakai expiry service untuk parsing timestamp
+  comment dengan timezone yang benar. Kosong = UTC fallback.
+- **`store.DeviceStore.UpdateTimezone`** — method baru untuk update kolom `time_zone`
+  di DB secara selektif (tanpa re-encrypt password).
 - **Middleware attach**: `Recovery`, `RequestID`, `Logger`, `CORS`
   sekarang aktif di gin engine (sebelumnya didefinisikan tapi tidak
   dipasang). `X-Request-ID` ter-echo di response header + log entry.
@@ -65,6 +71,14 @@ device encryption ditunda ke fase 5 (separate plan).
 
 ### Changed
 
+- **`expiry.ParseExpiry`** — tambah parameter `loc *time.Location`. Fallback ke
+  `time.UTC` kalau nil. Pakai `time.ParseInLocation` supaya timestamp comment
+  di-interpretasikan dalam timezone router, bukan UTC.
+- **`expiry.runChecker`** — re-fetch device dari DB di tiap tick. Timezone yang
+  di-update oleh devmgr saat reconnect langsung terpakai tanpa restart goroutine.
+- **`devmgr.connect()`** — best-effort fetch timezone dari router via `cs.Sys.Clock()`
+  setelah koneksi berhasil, sebelum fire `OnDeviceConnected`. Timezone di-persist
+  ke DB sehingga `expSvc.Start()` membaca nilai yang benar saat bootstrap.
 - **Expiry checker backoff state machine**: saat device disconnect,
   loop transisi ke backoff (30s → 10m, ×2 per gagal). Log sekali
   per transisi state (sebelumnya spam log "expiry: check failed"
@@ -91,6 +105,11 @@ device encryption ditunda ke fase 5 (separate plan).
 
 ### Fixed
 
+- **Expiry service timezone mismatch** — RouterOS menulis timestamp comment dalam
+  jam lokal router, tapi `time.Parse()` menginterpretasikan sebagai UTC → user
+  baru di-expire setelah offset timezone berlalu (UTC+7 = 7 jam terlambat). Fix:
+  timezone router di-fetch dari `/system/clock` saat connect, di-persist ke DB,
+  dan di-pass ke `ParseExpiry` via `time.LoadLocation`.
 - **`expiry.ParseExpiry` off-by-one**: layout `"jan/02/2006 15:04:05"`
   20 chars, tapi parser pakai `[:19]` yang strip karakter terakhir.
   Plus token `"jan"` lowercase di Go time.Parse di-treat sebagai

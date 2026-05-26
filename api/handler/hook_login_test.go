@@ -62,6 +62,9 @@ func (f *fakeDeviceStore) Delete(ctx context.Context, id uint) error {
 func (f *fakeDeviceStore) UpdateStatus(ctx context.Context, id uint, status, lastError string, lastSeen *time.Time) error {
 	return errors.New("not implemented")
 }
+func (f *fakeDeviceStore) UpdateTimezone(ctx context.Context, id uint, tz string) error {
+	return errors.New("not implemented")
+}
 
 // fakeTxStore — in-memory transaction store untuk webhook test.
 type fakeTxStore struct {

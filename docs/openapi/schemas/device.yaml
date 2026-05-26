@@ -40,6 +40,14 @@ DeviceResponse:
       type: string
       description: Interval expiry-checker untuk device ini (Go duration).
       example: "2m"
+    time_zone:
+      type: string
+      description: |
+        Nama IANA timezone router (mis. "Asia/Jakarta"). Kosong = UTC.
+        Di-fetch otomatis dari `/system/clock` saat devmgr terhubung dan
+        di-persist ke DB. Dipakai expiry service untuk parsing timestamp
+        comment dengan timezone yang benar.
+      example: "Asia/Jakarta"
     active:
       type: boolean
       description: Kalau false, expiry checker & auto-reconnect dimatikan.

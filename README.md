@@ -1,6 +1,6 @@
 # roslib-mikhmon
 
-Reimplementasi RouterOS command & script milik [mikhmonv3](https://github.com/laksa19/mikhmonv3) di atas library [`roslib`](../). Tujuan akhir: REST API + SSE service untuk hotspot voucher management. **Iterasi pertama hanya layer command + script (no HTTP yet).**
+Reimplementasi RouterOS command & script milik [mikhmonv3](https://github.com/laksa19/mikhmonv3) di atas library [`roslib`](../). REST API + SSE service untuk hotspot voucher management — multi-router, JWT auth, expiry service otomatis, dan laporan penjualan.
 
 ## Status
 
@@ -12,8 +12,8 @@ Reimplementasi RouterOS command & script milik [mikhmonv3](https://github.com/la
 | `mikrotik/` (system, hotspot, ppp, network, syslog) | ✅ | integration (live router) |
 | `scripts/` (onlogin, onevent, transaction, quickprint) | ✅ | unit (golden file) |
 | `workflows/` (cascade) | ✅ | integration |
-| `api/` (gin REST + SSE + middleware) | ✅ | live smoke |
-| `cmd/server/` (entry point) | ✅ | manual |
+| `api/` (gin REST + SSE + JWT auth + webhook + rate limit) | ✅ | live smoke |
+| `cmd/server/` (entry point, multi-router, expiry service, metrics) | ✅ | manual |
 
 Refactor besar (Mei 2026): paket `mikrotik/` di-thin-out — sekarang langsung di atas `*roslib.Device` (bukan `CommandRunner` boundary). Akibatnya muncul method khusus per resource untuk:
 
@@ -31,9 +31,13 @@ go test ./...                            # unit (domain + scripts + helpers)
 go test -tags=integration ./test/...     # ke router asli (butuh .env)
 
 # Jalankan HTTP server (gin REST + SSE)
-cp .env.example .env  # isi ROSLIB_ROUTER_* + HTTP_BIND
+cp .env.example .env
+# Edit .env — minimal:
+#   DB_DSN=postgres://...
+#   HTTP_BIND=0.0.0.0:8080
+#   GO_SERVICE_URL=http://<ip-server>:8080  # wajib untuk selling record via webhook
 go run ./cmd/server
-# → http://127.0.0.1:8080/healthz, /api/v1/...
+# → http://0.0.0.0:8080/healthz, /api/v1/..., /docs
 ```
 
 Endpoint inventory + format SSE: lihat [docs/API.md](docs/API.md).

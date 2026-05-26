@@ -2,7 +2,7 @@ services:
 
   postgres:
     image: postgres:17-alpine
-    container_name: mikhmon-postgres
+    container_name: rosmon-postgres
     environment:
       POSTGRES_DB: mikhmon
       POSTGRES_USER: mikhmon
@@ -19,7 +19,7 @@ services:
 
   influxdb3:
     image: quay.io/influxdb/influxdb3-core:latest
-    container_name: mikhmon-influx
+    container_name: rosmon-influx
     command:
       - serve
       - --node-id=node0

@@ -133,6 +133,14 @@ func (s *Service) runChecker(ctx context.Context, d model.MikrotikDevice) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
+			// Re-fetch device state so timezone updates (from devmgr on reconnect)
+			// are picked up without restarting the goroutine.
+			if fresh, ferr := s.devices.Get(ctx, d.ID); ferr == nil {
+				d = fresh
+				if ni, nerr := time.ParseDuration(d.ExpiryCheckInterval); nerr == nil && ni > 0 {
+					normalInterval = ni
+				}
+			}
 			err := s.checkDevice(ctx, d)
 			switch {
 			case errors.Is(err, devmgr.ErrDeviceNotConnected):

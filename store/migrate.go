@@ -16,8 +16,5 @@ func Migrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	// Drop kolom slug yang sudah tidak dipakai (backward-compatible:
-	// idempotent — tidak error kalau kolom sudah tidak ada).
-	_ = db.Migrator().DropColumn(&model.MikrotikDevice{}, "slug")
 	return nil
 }
